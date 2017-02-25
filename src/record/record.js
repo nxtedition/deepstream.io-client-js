@@ -26,7 +26,9 @@ const Record = function (name, connection, client) {
 
   this._data = undefined
   this._patchQueue = []
+  this._updateQueue = undefined
 
+  this._sendUpdate = this._sendUpdate.bind(this)
   this._handleConnectionStateChange = this._handleConnectionStateChange.bind(this)
 
   this._client.on('connectionStateChanged', this._handleConnectionStateChange)
@@ -74,8 +76,13 @@ Record.prototype.set = function (pathOrData, dataOrNil) {
 
   this._applyChange(newValue)
 
+  this._updateQueue.push(newValue)
   if (this.isReady) {
-    this._sendUpdate()
+    if (utils.isNode) {
+      process.nextTick(this._sendUpdate)
+    } else {
+      utils.requestIdleCallback(this._sendUpdate)
+    }
   }
 
   return Promise.resolve()
@@ -175,6 +182,7 @@ Record.prototype._$onMessage = function (message) {
   if (this.isDestroyed) {
     return
   } else if (message.action === C.ACTIONS.UPDATE) {
+    this._sendUpdate()
     if (!this.isReady) {
       this._onRead(message)
     } else {
@@ -196,12 +204,19 @@ Record.prototype._sendRead = function () {
 }
 
 Record.prototype._sendUpdate = function () {
+  if (this._updateQueue.length === 0) {
+    return
+  }
+
+  const update = this._updateQueue.pop()
+  this._updateQueue = []
+
   const start = this.version ? parseInt(this.version.split('-', 1)[0]) : 0
   const version = `${start + 1}-${xuid()}`
   this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [
     this.name,
     version,
-    lz.compressToUTF16(JSON.stringify(this._data)),
+    lz.compressToUTF16(JSON.stringify(update)),
     this.version
   ])
   this.version = version
