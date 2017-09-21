@@ -52,7 +52,7 @@ const Connection = function (client, url, options) {
   this._idleTimeout = this._options.maxIdleTime
 
   this._state = C.CONNECTION_STATE.CLOSED
-  this._createEndpoint()
+  // this._createEndpoint()
 
   setInterval(() => this._handleMessages({ timeRemaining: () => 8 }), this._options.maxIdleTime)
 }
@@ -83,13 +83,17 @@ Connection.prototype.authenticate = function (authParams, callback) {
   this._authParams = authParams
   this._authCallback = callback
 
-  if (this._tooManyAuthAttempts || this._challengeDenied || this._connectionAuthenticationTimeout) {
+  if (this._tooManyAuthAttempts || this._challengeDenied) {
     this._client._$onError(C.TOPIC.ERROR, C.EVENT.IS_CLOSED, 'this client\'s connection was closed')
     return
   } else if (this._deliberateClose === true && this._state === C.CONNECTION_STATE.CLOSED) {
     this._createEndpoint()
     this._deliberateClose = false
     return
+  }
+
+  if (!this._endpoint) {
+    this._createEndpoint()
   }
 
   if (this._state === C.CONNECTION_STATE.AWAITING_AUTHENTICATION) {
