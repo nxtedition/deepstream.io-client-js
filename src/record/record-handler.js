@@ -14,7 +14,6 @@ const RecordHandler = function (options, connection, client) {
   this._listeners = new Map()
   this._cache = new LRU({ max: options.cacheSize || 512 })
   this._prune = new Map()
-  this._updater = null
   this._dirty = new Set()
   this._sendUpdates = this._sendUpdates.bind(this)
   this._lz = {
@@ -54,10 +53,10 @@ const RecordHandler = function (options, connection, client) {
 }
 
 RecordHandler.prototype._sendUpdate = function (record) {
-  this._dirty.add(record)
-  if (!this._updater) {
-    this._updater = process.nextTick(this._sendUpdates)
+  if (this._dirty.size === 0) {
+    process.nextTick(this._sendUpdates)
   }
+  this._dirty.add(record)
 }
 
 RecordHandler.prototype._sendUpdates = function () {
@@ -65,7 +64,6 @@ RecordHandler.prototype._sendUpdates = function () {
     record._$sendUpdate()
   }
   this._dirty.clear()
-  this._updater = null
 }
 
 RecordHandler.prototype.getRecord = function (name) {
