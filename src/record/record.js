@@ -331,7 +331,7 @@ Record.prototype._onRead = function (data) {
     }
 
     if (this._data !== value) {
-      this._$sendUpdate(this)
+      this._$sendUpdate()
     }
   })
 }

@@ -54,6 +54,7 @@ const RecordHandler = function (options, connection, client) {
 }
 
 RecordHandler.prototype._sendUpdate = function (record) {
+  this._dirty.add(record)
   if (!this._updater) {
     this._updater = process.nextTick(this._sendUpdates)
   }
