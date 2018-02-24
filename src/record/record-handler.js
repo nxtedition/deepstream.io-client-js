@@ -24,7 +24,9 @@ const RecordHandler = function (options, connection, client) {
         now - timestamp > 2000
       ) {
         this._prune.delete(record)
-        this._records.delete(record.name)
+        if (record._shared) {
+          this._records.delete(record.name)
+        }
         record._$destroy()
       }
     }
@@ -44,8 +46,26 @@ RecordHandler.prototype.getRecord = function (name) {
       this._cache,
       this._prune
     )
+    record._shared = true
     this._records.set(name, record)
   }
+
+  record.acquire()
+
+  return record
+}
+
+RecordHandler.prototype.createRecord = function (name) {
+  invariant(typeof name === 'string' && name.length > 0 && !name.includes('[object Object]'), `invalid name ${name}`)
+
+  const record = new Record(
+    name,
+    this._connection,
+    this._client,
+    this._cache,
+    this._prune
+  )
+  record._shared = false
 
   record.acquire()
 
@@ -147,11 +167,11 @@ RecordHandler.prototype.observe = function (name) {
     })
 }
 
-RecordHandler.prototype.observe2 = function (name) {
+RecordHandler.prototype.observe2 = function (name, shared = true) {
   return Observable
     .create(o => {
       try {
-        const record = this.getRecord(name)
+        const record = shared ? this.getRecord(name) : this.createRecord(name)
         const onUpdate = () => o.next({
           data: record.get(),
           ready: record.isReady,
