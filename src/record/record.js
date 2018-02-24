@@ -8,20 +8,14 @@ const messageParser = require('../message/message-parser')
 const xuid = require('xuid')
 const invariant = require('invariant')
 
-const Record = function (name, connection, client, cache, prune, lz) {
-  invariant(connection, 'missing connection')
-  invariant(client, 'missing client')
-  invariant(cache, 'missing cache')
-  invariant(prune, 'missing prune')
-  invariant(lz, 'missing lz')
-
+const Record = function (name, handler) {
   if (typeof name !== 'string' || name.length === 0 || name.includes('[object Object]')) {
     throw new Error('invalid argument name')
   }
 
-  this._lz = lz
-  this._cache = cache
-  this._prune = prune
+  this._lz = handler.lz
+  this._cache = handler.cache
+  this._prune = handler.prune
 
   const [ version, _data ] = this._cache.get(name) || [null, null]
 
@@ -33,8 +27,8 @@ const Record = function (name, connection, client, cache, prune, lz) {
   this.hasProvider = false
   this.version = version
 
-  this._connection = connection
-  this._client = client
+  this._connection = handler.connection
+  this._client = handler.client
   this._eventEmitter = new EventEmitter()
 
   this._stale = null

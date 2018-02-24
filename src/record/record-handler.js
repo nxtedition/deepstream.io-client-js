@@ -54,14 +54,7 @@ RecordHandler.prototype.getRecord = function (name) {
   let record = this._records.get(name)
 
   if (!record) {
-    record = new Record(
-      name,
-      this._connection,
-      this._client,
-      this._cache,
-      this._prune,
-      this._lz
-    )
+    record = new Record(name, this)
     this._records.set(name, record)
   }
 
