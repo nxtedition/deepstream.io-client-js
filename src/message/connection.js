@@ -316,36 +316,8 @@ Connection.prototype._onClose = function () {
  */
 Connection.prototype._onMessage = function (message) {
   this._rawMessages.push(message.data)
-  if (!this._messageHandler) {
-    this._messageHandler = utils.requestIdleCallback(this._handleMessages)
-  }
-}
 
-Connection.prototype._reset = function () {
-  if (this._heartbeatInterval) {
-    clearInterval(this._heartbeatInterval)
-    this._heartbeatInterval = null
-    this._lastHeartBeat = null
-  }
-
-  if (this._messageSender) {
-    clearTimeout(this._messageSender)
-    this._messageSender = null
-    this._queuedMessages.length = 0
-  }
-
-  if (this._messageHandler) {
-    this._handleMessages()
-    utils.cancelIdleCallback(this._messageHandler)
-    this._messageHandler = null
-    this._messages.length = 0
-    this._rawMessages.length = 0
-    this._rawMessagesIndex = 0
-  }
-}
-
-Connection.prototype._handleMessages = function (deadline) {
-  do {
+  while (true) {
     if (this._messages.length === 0) {
       const rawMessage = this._rawMessages[this._rawMessagesIndex]
       this._rawMessages[this._rawMessagesIndex++] = undefined
@@ -380,12 +352,20 @@ Connection.prototype._handleMessages = function (deadline) {
         this._client._$onMessage(this._message)
       }
     }
-  } while (!deadline || deadline.timeRemaining() > 0) // eslint-disable-line
+  }
+}
 
-  if ((this._messages.length > 0 || this._rawMessages.length > 0) && !this._deliberateClose) {
-    this._messageHandler = utils.requestIdleCallback(this._handleMessages, { timeout: this._idleTimeout })
-  } else {
-    this._messageHandler = null
+Connection.prototype._reset = function () {
+  if (this._heartbeatInterval) {
+    clearInterval(this._heartbeatInterval)
+    this._heartbeatInterval = null
+    this._lastHeartBeat = null
+  }
+
+  if (this._messageSender) {
+    clearTimeout(this._messageSender)
+    this._messageSender = null
+    this._queuedMessages.length = 0
   }
 }
 
