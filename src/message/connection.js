@@ -44,7 +44,6 @@ const Connection = function (client, url, options) {
   this._lastHeartBeat = null
   this._heartbeatInterval = null
 
-  this._handleMessages = this._handleMessages.bind(this)
   this._sendQueuedMessages = this._sendQueuedMessages.bind(this)
 
   this._originalUrl = utils.parseUrl(url, this._options.path)
@@ -53,11 +52,6 @@ const Connection = function (client, url, options) {
 
   this._state = C.CONNECTION_STATE.CLOSED
   this._createEndpoint()
-
-  setInterval(() => {
-    const end = Date.now() + 8
-    this._handleMessages({ timeRemaining: () => Math.max(0, end - Date.now()) })
-  }, this._options.maxIdleTime)
 }
 
 /**
