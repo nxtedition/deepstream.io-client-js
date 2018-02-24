@@ -74,7 +74,7 @@ Record.prototype.set = function (pathOrData, dataOrNil) {
     if (newValue === this._data) {
       return Promise.resolve()
     }
-    this._sendUpdate(newValue)
+    this._dirty.add(this)
   } else {
     this._patchQueue = (path && this._patchQueue) || []
     this._patchQueue.push(path, data)
@@ -236,7 +236,7 @@ Record.prototype._sendRead = function () {
   this.isSubscribed = true
 }
 
-Record.prototype._sendUpdate = function (newValue) {
+Record.prototype._$sendUpdate = function () {
   invariant(this.isReady, `${this.name}  cannot update non-ready record`)
 
   this._invariantVersion()
@@ -258,7 +258,7 @@ Record.prototype._sendUpdate = function (newValue) {
   const prevVersion = this.version || ''
   const connection = this._connection
 
-  this._lz.compress(newValue, raw => {
+  this._lz.compress(this._data, raw => {
     connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [
       name,
       nextVersion,
@@ -330,7 +330,7 @@ Record.prototype._onRead = function (data) {
     }
 
     if (this._data !== value) {
-      this._sendUpdate(this._data)
+      this._dirty.add(this)
     }
   })
 }
