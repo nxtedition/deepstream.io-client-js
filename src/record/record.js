@@ -8,20 +8,15 @@ const messageParser = require('../message/message-parser')
 const xuid = require('xuid')
 const invariant = require('invariant')
 
-const Record = function (name, connection, client, cache, prune, lz) {
-  invariant(connection, 'missing connection')
-  invariant(client, 'missing client')
-  invariant(cache, 'missing cache')
-  invariant(prune, 'missing prune')
-  invariant(lz, 'missing lz')
-
+const Record = function (name, handler) {
   if (typeof name !== 'string' || name.length === 0 || name.includes('[object Object]')) {
     throw new Error('invalid argument name')
   }
 
-  this._lz = lz
-  this._cache = cache
-  this._prune = prune
+  this._handler = handler
+  this._lz = handler._lz
+  this._cache = handler._cache
+  this._prune = handler._prune
 
   const [ version, _data ] = this._cache.get(name) || [null, null]
 
@@ -33,8 +28,8 @@ const Record = function (name, connection, client, cache, prune, lz) {
   this.hasProvider = false
   this.version = version
 
-  this._connection = connection
-  this._client = client
+  this._connection = handler._connection
+  this._client = handler._client
   this._eventEmitter = new EventEmitter()
 
   this._stale = null
@@ -80,7 +75,7 @@ Record.prototype.set = function (pathOrData, dataOrNil) {
     if (newValue === this._data) {
       return Promise.resolve()
     }
-    this._sendUpdate(newValue)
+    this._handler._sendUpdate(this)
   } else {
     this._patchQueue = (path && this._patchQueue) || []
     this._patchQueue.push(path, data)
@@ -242,7 +237,7 @@ Record.prototype._sendRead = function () {
   this.isSubscribed = true
 }
 
-Record.prototype._sendUpdate = function (newValue) {
+Record.prototype._$sendUpdate = function () {
   invariant(this.isReady, `${this.name}  cannot update non-ready record`)
 
   this._invariantVersion()
@@ -264,7 +259,7 @@ Record.prototype._sendUpdate = function (newValue) {
   const prevVersion = this.version || ''
   const connection = this._connection
 
-  this._lz.compress(newValue, raw => {
+  this._lz.compress(this._data, raw => {
     connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [
       name,
       nextVersion,
@@ -336,7 +331,7 @@ Record.prototype._onRead = function (data) {
     }
 
     if (this._data !== value) {
-      this._sendUpdate(this._data)
+      this._$sendUpdate()
     }
   })
 }

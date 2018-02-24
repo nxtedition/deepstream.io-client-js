@@ -14,6 +14,9 @@ const RecordHandler = function (options, connection, client) {
   this._listeners = new Map()
   this._cache = new LRU({ max: options.cacheSize || 512 })
   this._prune = new Map()
+  this._updater = null
+  this._dirty = new Set()
+  this._sendUpdates = this._sendUpdates.bind(this)
   this._lz = {
     compress (obj, cb) {
       try {
@@ -34,6 +37,8 @@ const RecordHandler = function (options, connection, client) {
   setInterval(() => {
     let now = Date.now()
 
+    this._sendUpdates()
+
     for (const [ record, timestamp ] of this._prune) {
       if (
         record.usages === 0 &&
@@ -48,20 +53,28 @@ const RecordHandler = function (options, connection, client) {
   }, 2000)
 }
 
+RecordHandler.prototype._sendUpdate = function (record) {
+  this._dirty.add(record)
+  if (!this._updater) {
+    this._updater = process.nextTick(this._sendUpdates)
+  }
+}
+
+RecordHandler.prototype._sendUpdates = function () {
+  for (const record of this._dirty) {
+    record._$sendUpdate()
+  }
+  this._dirty.clear()
+  this._updater = null
+}
+
 RecordHandler.prototype.getRecord = function (name) {
   invariant(typeof name === 'string' && name.length > 0 && !name.includes('[object Object]'), `invalid name ${name}`)
 
   let record = this._records.get(name)
 
   if (!record) {
-    record = new Record(
-      name,
-      this._connection,
-      this._client,
-      this._cache,
-      this._prune,
-      this._lz
-    )
+    record = new Record(name, this)
     this._records.set(name, record)
   }
 
