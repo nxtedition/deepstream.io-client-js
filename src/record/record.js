@@ -13,9 +13,10 @@ const Record = function (name, handler) {
     throw new Error('invalid argument name')
   }
 
-  this._lz = handler.lz
-  this._cache = handler.cache
-  this._prune = handler.prune
+  this._handler = handler
+  this._lz = handler._lz
+  this._cache = handler._cache
+  this._prune = handler._prune
 
   const [ version, _data ] = this._cache.get(name) || [null, null]
 
@@ -27,8 +28,8 @@ const Record = function (name, handler) {
   this.hasProvider = false
   this.version = version
 
-  this._connection = handler.connection
-  this._client = handler.client
+  this._connection = handler._connection
+  this._client = handler._client
   this._eventEmitter = new EventEmitter()
 
   this._stale = null
@@ -74,7 +75,7 @@ Record.prototype.set = function (pathOrData, dataOrNil) {
     if (newValue === this._data) {
       return Promise.resolve()
     }
-    this._dirty.add(this)
+    this._handler._sendUpdate(this)
   } else {
     this._patchQueue = (path && this._patchQueue) || []
     this._patchQueue.push(path, data)
@@ -330,7 +331,7 @@ Record.prototype._onRead = function (data) {
     }
 
     if (this._data !== value) {
-      this._dirty.add(this)
+      this._$sendUpdate(this)
     }
   })
 }
