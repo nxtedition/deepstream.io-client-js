@@ -39,6 +39,12 @@ describe('set', () => {
       asd: { foo: { bar: true } }
     })
   })
+
+  it('disallows setting non-plain objects', () => {
+    const record = { _$data: {} }
+    expect(() => jsonPath.set(record._$data, null, { date: new Date('2019-06-13') })).toThrow()
+    expect(() => jsonPath.set(record._$data, 'date', new Date('2019-06-13'))).toThrow()
+  })
 })
 
 describe('order', () => {
