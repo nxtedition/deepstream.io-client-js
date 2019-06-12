@@ -177,7 +177,7 @@ describe('objects are created from paths and their value is set correctly', () =
   it('sets values for null values', () => {
     const record = { _$data:{
       job: null,
-  			joinedAt: 1480020987915
+      joinedAt: 1480020987915
     } }
     const jobId = { id: 88 }
     record._$data = jsonPath.set(record._$data, 'job', jobId, true)
