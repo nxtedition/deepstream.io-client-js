@@ -28,7 +28,7 @@ describe('equality', () => {
 })
 
 describe('set', () => {
-  it('set througn null', () => {
+  it('set through null', () => {
     const obj = {
       asd: null
     }
