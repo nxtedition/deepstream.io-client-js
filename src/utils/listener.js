@@ -1,7 +1,7 @@
 const C = require('../constants/constants')
 const xuid = require('xuid')
 const { Observable } = require('rxjs')
-const lz = require('@nxtedition/lz-string')
+const lz = require('../utils/lz')
 
 const Listener = function (topic, pattern, callback, handler, recursive) {
   this._topic = topic
@@ -11,7 +11,6 @@ const Listener = function (topic, pattern, callback, handler, recursive) {
   this._options = this._handler._options
   this._client = this._handler._client
   this._connection = this._handler._connection
-  this._lz = this._handler._lz
   this._providers = new Map()
   this.recursive = recursive
 
@@ -49,6 +48,7 @@ Listener.prototype._$onMessage = function (message) {
       version: null,
       body: null,
       ready: false,
+      disposed: false,
       patternSubscription: null,
       valueSubscription: null
     }
@@ -61,6 +61,7 @@ Listener.prototype._$onMessage = function (message) {
         provider.valueSubscription.unsubscribe()
         provider.valueSubscription = null
       }
+      provider.disposed = true
       this._providers.delete(provider.name)
     }
     provider.next = value$ => {
@@ -108,37 +109,40 @@ Listener.prototype._$onMessage = function (message) {
           this._handler.emit(provider.name, value)
         } else if (this._topic === C.TOPIC.RECORD) {
           // TODO (perf): Check for equality before compression.
-          let body
-          try {
-            body = lz.compressToUTF16(JSON.stringify(value))
-          } catch (err) {
-            this._client._$onError(this._topic, C.EVENT.LZ_ERROR, err, [this._pattern, provider.name, value])
-            return
-          }
+          lz.compress(JSON.stringify(value), (err, body) => {
+            if (provider.disposed) {
+              return
+            }
 
-          if (provider.body !== body || !/^INF-/.test(provider.version)) {
-            provider.version = `INF-${xuid()}-${this._client.user || ''}`
-            provider.body = body
-            provider.ready = true
-            this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [provider.name, provider.version, provider.body])
+            if (err) {
+              this._client._$onError(this._topic, C.EVENT.LZ_ERROR, err, [this._pattern, provider.name, value])
+              return
+            }
 
-            this._handler._$handle({
-              action: C.ACTIONS.UPDATE,
-              data: [provider.name, provider.version, value]
-            })
+            if (provider.body !== body || !/^INF-/.test(provider.version)) {
+              provider.version = `INF-${xuid()}-${this._client.user || ''}`
+              provider.body = body
+              provider.ready = true
+              this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [provider.name, provider.version, provider.body])
 
-            // TODO (perf): Let client handle its own has provider state instead of having the server
-            // send on/off messages.
-          } else if (!provider.ready) {
-            provider.ready = true
-            // TODO (perf): Sending body here should be unnecessary.
-            this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [provider.name, provider.version, provider.body])
+              this._handler._$handle({
+                action: C.ACTIONS.UPDATE,
+                data: [provider.name, provider.version, value]
+              })
 
-            this._handler._$handle({
-              action: C.ACTIONS.UPDATE,
-              data: [provider.name, provider.version, value]
-            })
-          }
+              // TODO (perf): Let client handle its own has provider state instead of having the server
+              // send on/off messages.
+            } else if (!provider.ready) {
+              provider.ready = true
+              // TODO (perf): Sending body here should be unnecessary.
+              this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [provider.name, provider.version, provider.body])
+
+              this._handler._$handle({
+                action: C.ACTIONS.UPDATE,
+                data: [provider.name, provider.version, value]
+              })
+            }
+          })
         }
       },
       error: provider.error

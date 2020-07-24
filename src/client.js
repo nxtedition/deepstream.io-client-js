@@ -8,6 +8,9 @@ const defaultOptions = require('./default-options')
 const xuid = require('xuid')
 const utils = require('./utils/utils')
 
+require('rxjs-compat')
+require('@nxtedition/lib/rxjs')
+
 const Client = function (url, options) {
   this._url = url
   this._options = this._getOptions(options || {})
