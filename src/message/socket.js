@@ -7,7 +7,7 @@ class Socket {
   constructor(url) {
     this._worker = new Worker(path.join(__dirname, 'socket-worker.js'), {
       workerData: {
-        url,
+        url: url.href,
       },
     })
       .on('error', (err) => {
@@ -22,7 +22,7 @@ class Socket {
         } else if (event === 'close') {
           this.onclose?.()
         } else if (event === 'data') {
-          this.onmessage?.(Buffer.from(data))
+          this.onmessage?.({ data: Buffer.from(data) })
         }
       })
 
