@@ -101,7 +101,7 @@ class Listener {
         provider.value$ = value$
         provider.version = null
 
-        if (provider.valueSubscription$) {
+        if (provider.valueSubscription) {
           provider.valueSubscription.unsubscribe()
           provider.valueSubscription = provider.value$?.subscribe(provider.observer)
         }
