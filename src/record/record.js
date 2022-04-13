@@ -22,7 +22,7 @@ const Record = function (name, handler) {
   this._subscribed = false
   this._provided = null
   this._dirty = false
-  this._entry = null
+  this._cached = null
   this._patchQueue = []
 
   this._usages = 1 // Start with 1 for cache unref without subscribe.
@@ -51,14 +51,11 @@ const Record = function (name, handler) {
       if (this.version) {
         // TODO (fix): What if this.version is older than version?
       } else {
-        invariant(!this._entry, 'no version no entry')
+        invariant(!this._cached, 'no version no entry')
 
-        this._entry = entry
+        this._cached = entry
         this.version = entry[0]
-        this.data = jsonPath.set(this.data, null, this._entry[1], true)
-        this.data = utils.deepFreeze(this.data)
-        this._applyPatches()
-
+        this.data = utils.deepFreeze(Object.keys(entry[1]).length === 0 ? jsonPath.EMPTY : entry[1])
         this.emit('update', this)
       }
     } else {
@@ -315,20 +312,6 @@ Record.prototype._onSubscriptionHasProvider = function (data) {
   this.emit('update', this)
 }
 
-Record.prototype._applyPatches = function () {
-  if (!this._patchQueue) {
-    return
-  }
-
-  if (this.version.charAt(0) !== 'I') {
-    for (let i = 0; i < this._patchQueue.length; i += 2) {
-      this.data = jsonPath.set(this.data, this._patchQueue[i + 0], this._patchQueue[i + 1], true)
-    }
-  } else if (this._patchQueue.length) {
-    this._onError(C.EVENT.USER_ERROR, 'cannot patch provided value')
-  }
-}
-
 Record.prototype._onUpdate = function ([name, version, data]) {
   invariant(this.connected, 'must be connected')
 
@@ -344,8 +327,8 @@ Record.prototype._onUpdate = function ([name, version, data]) {
       // TODO (fix): What to do when client version is newer than server version?
     }
 
-    if (this._entry && this._entry[0] === version) {
-      data = jsonPath.set(this.data, null, this._entry[1], true)
+    if (this._cached && this._cached[0] === version) {
+      data = jsonPath.set(this.data, null, this._cached[1], true)
     } else if (this.version === version) {
       data = this.data
     } else if (data) {
@@ -356,23 +339,32 @@ Record.prototype._onUpdate = function ([name, version, data]) {
     invariant(data, 'missing data')
     invariant(version, 'missing version')
 
-    this._entry = [version, data]
     this.version = version
     this.data = data
 
     if (this._patchQueue) {
-      this._applyPatches()
-
-      if (this.data !== data) {
-        this._sendUpdate()
+      if (this.version.charAt(0) !== 'I') {
+        for (let i = 0; i < this._patchQueue.length; i += 2) {
+          this.data = jsonPath.set(
+            this.data,
+            this._patchQueue[i + 0],
+            this._patchQueue[i + 1],
+            true
+          )
+        }
+        if (this.data !== data) {
+          this._sendUpdate()
+        }
+      } else if (this._patchQueue.length > 0) {
+        // TODO (fix): Warning?
       }
 
       this._patchQueue = null
+      this._cached = null
 
       if (this._pendingWrite.delete(this)) {
         this.unref()
       }
-
       this.emit('ready')
     }
 
@@ -413,8 +405,10 @@ Record.prototype._subscribe = function () {
 
   // TODO (fix): Limit number of reads.
 
-  if (this._entry && this._entry[0]) {
-    this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name, this._entry[0]])
+  if (!this._patchQueue) {
+    this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name, this.version])
+  } else if (this._cached && this._cached[0]) {
+    this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name, this._cached[0]])
   } else {
     this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name])
   }

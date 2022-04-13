@@ -96,10 +96,10 @@ class Listener {
             value$ ? C.ACTIONS.LISTEN_ACCEPT : C.ACTIONS.LISTEN_REJECT,
             [this._pattern, provider.name]
           )
-          provider.version = null
         }
 
         provider.value$ = value$
+        provider.version = null
 
         if (provider.valueSubscription$) {
           provider.valueSubscription.unsubscribe()
@@ -147,12 +147,14 @@ class Listener {
         error: provider.error,
       }
       provider.start = () => {
+        provider.stop()
+
         try {
-          const pattern$ = this._callback(name)
-          if (this._recursive && pattern$ && typeof pattern$.subscribe === 'function') {
-            provider.patternSubscription = pattern$.subscribe(provider)
+          const provider$ = this._callback(name)
+          if (this._recursive && provider$ && typeof provider$.subscribe === 'function') {
+            provider.patternSubscription = provider$.subscribe(provider)
           } else {
-            provider.next(pattern$)
+            provider.next(provider$)
           }
         } catch (err) {
           this._error(provider.name, err)
