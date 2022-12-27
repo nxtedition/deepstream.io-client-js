@@ -41,17 +41,22 @@ const Connection = function (client, url, options) {
   this._sendMessages = this._sendMessages.bind(this)
   this._state = C.CONNECTION_STATE.CLOSED
   this._url = new URL(url)
+  this._connected = 0
 
   this.hasher = null
   xxhash().then((hasher) => {
     this.hasher = hasher
     this._createEndpoint()
   })
-
-  this.connected = 0
 }
 
 Emitter(Connection.prototype)
+
+Object.defineProperty(Connection.prototype, 'connected', {
+  get: function connected() {
+    return this._connected
+  },
+})
 
 Connection.prototype.authenticate = function (authParams, callback) {
   this._authParams = authParams
@@ -374,11 +379,11 @@ Connection.prototype._setState = function (state) {
   this._client.emit(C.EVENT.CONNECTION_STATE_CHANGED, state)
 
   if (state === C.CONNECTION_STATE.OPEN) {
-    this.connected = Date.now()
-    this._client.emit(C.EVENT.CONNECTED, this.connected)
+    this._connected = Date.now()
+    this._client.emit(C.EVENT.CONNECTED, this._connected)
   } else if (state === C.CONNECTION_STATE.RECONNECTING || state === C.CONNECTION_STATE.CLOSED) {
-    this.connected = 0
-    this._client.emit(C.EVENT.CONNECTED, this.connected)
+    this._connected = 0
+    this._client.emit(C.EVENT.CONNECTED, this._connected)
   }
 }
 
