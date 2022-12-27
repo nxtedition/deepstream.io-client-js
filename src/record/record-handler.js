@@ -70,25 +70,21 @@ const RecordHandler = function (options, connection, client) {
 
     let n = 0
     for (const [rec, timestamp] of this._prune) {
-      if (!rec.isReady) {
-        continue
+      if (rec._$dirty) {
+        if (batch) {
+          batch.put(rec.name, rec._$dirty)
+        } else if (this._cache.put) {
+          this._cache.put(rec.name, rec._$dirty)
+        } else if (this._cache.set) {
+          this._cache.set(rec.name, rec._$dirty)
+        }
+        rec._$dirty = null
       }
 
       const ttl =
         rec.state >= C.RECORD_STATE.PROVIDER || Object.keys(rec.data).length === 0 ? 1e3 : 10e3
 
-      if (rec._dirty) {
-        if (batch) {
-          batch.put(rec.name, rec._dirty)
-        } else if (this._cache.put) {
-          this._cache.put(rec.name, rec._dirty)
-        } else if (this._cache.set) {
-          this._cache.set(rec.name, rec._dirty)
-        }
-        rec._dirty = null
-      }
-
-      if (this._now - timestamp <= ttl) {
+      if (!rec.isReady || this._now - timestamp <= ttl) {
         continue
       }
 
