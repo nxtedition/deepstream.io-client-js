@@ -29,12 +29,17 @@ class Listener {
       }),
       rx.distinctUntilKeyChanged('hash')
     )
-    this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN, [this._pattern, 'U'])
+
+    if (this._connection.connected) {
+      this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN, [this._pattern, 'U'])
+    }
   }
 
   _$destroy() {
     this._reset()
-    this._connection.sendMsg(this._topic, C.ACTIONS.UNLISTEN, [this._pattern])
+    if (this._connection.connected) {
+      this._connection.sendMsg(this._topic, C.ACTIONS.UNLISTEN, [this._pattern])
+    }
   }
 
   _$onMessage(message) {
@@ -90,9 +95,9 @@ class Listener {
     this._subscriptions.clear()
   }
 
-  _$handleConnectionStateChange(connected) {
+  _$handleConnectionStateChange() {
     this._reset()
-    if (connected) {
+    if (this._connection.connected) {
       this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN, [this._pattern, 'U'])
     }
   }
