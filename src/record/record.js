@@ -214,7 +214,7 @@ Record.prototype.set = function (pathOrData, dataOrNil) {
       this.ref()
       this._pendingWrite.add(this)
     }
-  } else if (!this._update(path, jsonData, jsonData)) {
+  } else if (!this._update(path, jsonData)) {
     return
   }
 
