@@ -22,7 +22,7 @@ const Record = function (name, handler) {
   this._subscribed = false
   this._provided = null
   this._loaded = false
-  this._dirty = null
+  this._$dirty = null
   this._entry = EMPTY_ENTRY
   this._patchQueue = []
   this._patchData = null
@@ -232,7 +232,7 @@ Record.prototype.when = function (stateOrNull) {
 
   return new Promise((resolve, reject) => {
     if (this.state >= state) {
-      resolve()
+      resolve(null)
       return
     }
 
@@ -246,7 +246,7 @@ Record.prototype.when = function (stateOrNull) {
       this.off('update', onUpdate)
       this.unref()
 
-      resolve()
+      resolve(null)
     }
 
     // const timeout = setTimeout(() => {
@@ -366,14 +366,14 @@ Record.prototype._update = function (path, data) {
   const nextVersion = this._makeVersion(parseInt(prevVersion) + 1)
 
   this._entry = [nextVersion, nextData, prevVersion]
-  this._dirty = this._entry
+  this._$dirty = this._entry
 
   const update = [this.name, nextVersion, JSON.stringify(nextData), prevVersion]
 
-  this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
-
   this._updates ??= new Map()
   this._updates.set(nextVersion, update)
+
+  this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
 
   return true
 }
@@ -395,12 +395,12 @@ Record.prototype._onUpdate = function ([name, version, data]) {
       throw new Error('missing version')
     }
 
-    const prevData = this.data
-    const prevVersion = this.version
-
     if (this._updates?.delete(version) && this._updates.size === 0) {
       this._updates = null
     }
+
+    const prevData = this.data
+    const prevVersion = this.version
 
     const cmp = utils.compareRev(version, this._entry[0])
 
@@ -417,7 +417,7 @@ Record.prototype._onUpdate = function ([name, version, data]) {
         data = JSON.parse(data)
       }
       this._entry = [version, data, null]
-      this._dirty = this._entry
+      this._$dirty = this._entry
     } else {
       this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [
         this.name,
@@ -469,17 +469,17 @@ Record.prototype._subscribe = function () {
     this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name])
   }
 
-  if (this._updates) {
-    for (const update of this._updates.values()) {
-      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
-    }
-  }
-
   this._subscribed = true
 }
 
 Record.prototype._$handleConnectionStateChange = function (connected) {
   if (connected) {
+    if (this._updates) {
+      for (const update of this._updates.values()) {
+        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
+      }
+    }
+
     this._subscribe()
   } else {
     this._subscribed = false
