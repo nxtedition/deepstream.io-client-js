@@ -29,7 +29,7 @@ const Record = function (name, handler) {
   this._usages = 0
 
   this.ref()
-  this._cache.get(this.name, (err, entry) => {
+  this._cache.get(name, (err, entry) => {
     this.unref()
 
     this._loaded = true
