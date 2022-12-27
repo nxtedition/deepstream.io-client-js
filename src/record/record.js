@@ -80,9 +80,9 @@ Record.STATE = C.RECORD_STATE
 EventEmitter(Record.prototype)
 
 Record.prototype._$destroy = function () {
-  invariant(this._usages === 0, this.name + ' must have no refs')
   invariant(this.version, this.name + ' must have version to destroy')
   invariant(this.isReady, this.name + ' must be ready to destroy')
+  invariant(this._usages === 0, this.name + ' must have no refs')
   invariant(this._patchQueue == null, this.name + ' must not have patch queue')
 
   if (this._subscribed) {
