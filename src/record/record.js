@@ -12,11 +12,11 @@ const Record = function (name, handler) {
   this._handler = handler
   this._stats = handler._stats
   this._prune = handler._prune
-  this._pendingWrite = handler._pendingWrite
   this._cache = handler._cache
   this._client = handler._client
   this._connection = handler._connection
-  this._updates = null
+  this._pendingWrite = handler._pendingWrite
+  this._pendingUpdate = null
 
   this._name = name
   this._subscribed = false
@@ -372,8 +372,8 @@ Record.prototype._update = function (path, data) {
 
   this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
 
-  this._updates ??= new Map()
-  this._updates.set(nextVersion, update)
+  this._pendingUpdate ??= new Map()
+  this._pendingUpdate.set(nextVersion, update)
 
   return true
 }
@@ -398,8 +398,8 @@ Record.prototype._onUpdate = function ([name, version, data]) {
     const prevData = this.data
     const prevVersion = this.version
 
-    if (this._updates?.delete(version) && this._updates.size === 0) {
-      this._updates = null
+    if (this._pendingUpdate?.delete(version) && this._pendingUpdate.size === 0) {
+      this._pendingUpdate = null
     }
 
     const cmp = utils.compareRev(version, this._entry[0])
@@ -469,8 +469,8 @@ Record.prototype._subscribe = function () {
     this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name])
   }
 
-  if (this._updates) {
-    for (const update of this._updates.values()) {
+  if (this._pendingUpdate) {
+    for (const update of this._pendingUpdate.values()) {
       this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
     }
   }
