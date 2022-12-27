@@ -47,6 +47,8 @@ const Connection = function (client, url, options) {
     this.hasher = hasher
     this._createEndpoint()
   })
+
+  this.connected = 0
 }
 
 Emitter(Connection.prototype)
@@ -372,9 +374,11 @@ Connection.prototype._setState = function (state) {
   this._client.emit(C.EVENT.CONNECTION_STATE_CHANGED, state)
 
   if (state === C.CONNECTION_STATE.OPEN) {
-    this._client.emit(C.EVENT.CONNECTED, true)
+    this.connected = Date.now()
+    this._client.emit(C.EVENT.CONNECTED, this.connected)
   } else if (state === C.CONNECTION_STATE.RECONNECTING || state === C.CONNECTION_STATE.CLOSED) {
-    this._client.emit(C.EVENT.CONNECTED, false)
+    this.connected = 0
+    this._client.emit(C.EVENT.CONNECTED, this.connected)
   }
 }
 

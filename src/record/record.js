@@ -25,8 +25,10 @@ const Record = function (name, handler) {
   this._entry = EMPTY_ENTRY
   this._patchQueue = []
   this._patchData = null
-  this._usages = 1 // Start with 1 for cache unref without subscribe.
-  this._cache.get(this.name, (err, entry) => {
+  this._usages = 0
+
+  this.ref()
+  this._cache.get(name, (err, entry) => {
     this.unref()
 
     if (err && (err.notFound || /notfound/i.test(err))) {
@@ -452,7 +454,7 @@ Record.prototype._onUpdate = function ([name, version, data]) {
 }
 
 Record.prototype._subscribe = function () {
-  if (this._subscribed || this._usages === 0) {
+  if (!this._connection.connected || this._subscribed || this._usages === 0) {
     return
   }
 
@@ -474,14 +476,13 @@ Record.prototype._subscribe = function () {
 }
 
 Record.prototype._$handleConnectionStateChange = function (connected) {
-  this._subscribed = false
   this._provided = null
   this._patchQueue = this._patchQueue || []
 
   if (connected) {
     this._subscribe()
   } else {
-    this._subscribed = true
+    this._subscribed = false
   }
 
   this.emit('update', this)

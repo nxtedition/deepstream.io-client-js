@@ -27,7 +27,6 @@ const RecordHandler = function (options, connection, client) {
   this._pendingWrite = new Set()
   this._now = Date.now()
   this._pruning = false
-  this._connected = 0
 
   this._syncEmitter = new EventEmitter()
 
@@ -127,8 +126,6 @@ const RecordHandler = function (options, connection, client) {
   pruneInterval.unref?.()
 
   this._connection.on(C.EVENT.CONNECTED, (connected) => {
-    this._connected = connected ? Date.now() : 0
-
     for (const listener of this._listeners.values()) {
       listener._$handleConnectionStateChange(connected)
     }
@@ -248,7 +245,7 @@ RecordHandler.prototype.sync = function (options) {
     }
 
     const onTimeout = () => {
-      const elapsed = Date.now() - this._connected
+      const elapsed = Date.now() - this._connection.connected
       if (elapsed < timeoutValue) {
         timeout = setTimeout(onTimeout, timeoutValue - elapsed)
         timeout.unref?.()
