@@ -22,13 +22,13 @@ const Connection = function (client, url, options) {
   this._connectionAuthenticationTimeout = false
   this._challengeDenied = false
   this._sendQueue = new FixedQueue()
+  this._recvQueue = new FixedQueue()
   this._message = {
     raw: null,
     topic: null,
     action: null,
     data: null,
   }
-  this._recvQueue = new FixedQueue()
   this._reconnectTimeout = null
   this._reconnectionAttempt = 0
   this._endpoint = null
@@ -39,10 +39,8 @@ const Connection = function (client, url, options) {
   this._recvMessages = this._recvMessages.bind(this)
   this._processingSend = false
   this._sendMessages = this._sendMessages.bind(this)
-
-  this._url = new URL(url)
-
   this._state = C.CONNECTION_STATE.CLOSED
+  this._url = new URL(url)
 
   this.hasher = null
   xxhash().then((hasher) => {
@@ -52,10 +50,6 @@ const Connection = function (client, url, options) {
 }
 
 Emitter(Connection.prototype)
-
-Connection.prototype.getState = function () {
-  return this._state
-}
 
 Connection.prototype.authenticate = function (authParams, callback) {
   this._authParams = authParams
@@ -89,7 +83,7 @@ Connection.prototype.sendMsg2 = function (topic, action, p0, p1) {
 }
 
 Connection.prototype.close = function () {
-  while (this._sendQueue.length) {
+  while (!this._sendQueue.isEmpty) {
     this._submit(this._sendQueue.shift())
   }
   this._reset()
@@ -128,6 +122,10 @@ Connection.prototype.send = function (message) {
       err,
       message.split(C.MESSAGE_PART_SEPERATOR).map((x) => x.slice(0, 256))
     )
+    return
+  }
+
+  if (this._state !== C.CONNECTION_STATE.OPEN) {
     return
   }
 

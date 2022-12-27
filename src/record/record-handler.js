@@ -31,8 +31,6 @@ const RecordHandler = function (options, connection, client) {
 
   this._syncEmitter = new EventEmitter()
 
-  this._handleConnectionStateChange = this._handleConnectionStateChange.bind(this)
-
   this.set = this.set.bind(this)
   this.get = this.get.bind(this)
   this.update = this.update.bind(this)
@@ -64,8 +62,6 @@ const RecordHandler = function (options, connection, client) {
       },
     }
   }
-
-  this._client.on(C.EVENT.CONNECTED, this._handleConnectionStateChange)
 
   const prune = (deadline) => {
     this._pruning = false
@@ -129,13 +125,25 @@ const RecordHandler = function (options, connection, client) {
     }
   }, 1e3)
   pruneInterval.unref?.()
-}
 
-Object.defineProperty(RecordHandler.prototype, 'connected', {
-  get: function connected() {
-    return Boolean(this._connected)
-  },
-})
+  this._connection.on(C.EVENT.CONNECTED, (connected) => {
+    this._connected = connected ? Date.now() : 0
+
+    for (const listener of this._listeners.values()) {
+      listener._$handleConnectionStateChange(connected)
+    }
+
+    for (const record of this._records.values()) {
+      record._$handleConnectionStateChange(connected)
+    }
+
+    if (connected) {
+      for (const token of this._syncEmitter.eventNames()) {
+        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
+      }
+    }
+  })
+}
 
 Object.defineProperty(RecordHandler.prototype, 'stats', {
   get: function stats() {
@@ -277,10 +285,7 @@ RecordHandler.prototype.sync = function (options) {
 
         token = xuid()
         this._syncEmitter.once(token, onToken)
-
-        if (this._connected) {
-          this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
-        }
+        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
       },
       (err) => onDone(Promise.reject(err))
     )
@@ -483,25 +488,6 @@ RecordHandler.prototype._$handle = function (message) {
   }
 
   return false
-}
-
-RecordHandler.prototype._handleConnectionStateChange = function (connected) {
-  for (const listener of this._listeners.values()) {
-    listener._$handleConnectionStateChange(connected)
-  }
-
-  for (const record of this._records.values()) {
-    record._$handleConnectionStateChange(connected)
-  }
-
-  if (connected) {
-    this._connected = Date.now()
-    for (const token of this._syncEmitter.eventNames()) {
-      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
-    }
-  } else {
-    this._connected = 0
-  }
 }
 
 module.exports = RecordHandler
