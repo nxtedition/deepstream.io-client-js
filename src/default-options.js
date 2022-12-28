@@ -7,5 +7,4 @@ module.exports = {
   batchSize: 4096,
   schedule: null,
   logger: null,
-  cache: null,
 }

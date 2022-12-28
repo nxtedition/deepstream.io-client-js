@@ -42,37 +42,12 @@ const RecordHandler = function (options, connection, client) {
   this.provide = this.provide.bind(this)
   this.getRecord = this.getRecord.bind(this)
 
-  this._stats = {
-    reads: 0,
-    hits: 0,
-    misses: 0,
-  }
-
   this._schedule = options.schedule ?? utils.schedule
-
-  if (options.cache) {
-    this._cache = options.cache
-    if (typeof this._cache.on === 'function') {
-      this._cache.on('error', (err) => {
-        this._client._$onError(C.TOPIC.RECORD, C.EVENT.CACHE_ERROR, err)
-      })
-    }
-  } else {
-    this._cache = {
-      get(name, callback) {
-        callback(null, null)
-      },
-    }
-  }
 
   this._client.on(C.EVENT.CONNECTED, this._handleConnectionStateChange)
 
   const prune = (deadline) => {
     this._pruning = false
-
-    const batch =
-      this._cache && typeof this._cache.batch === 'function' ? this._cache.batch() : null
-
     let n = 0
     for (const [rec, timestamp] of this._prune) {
       if (!rec.isReady) {
@@ -81,17 +56,6 @@ const RecordHandler = function (options, connection, client) {
 
       const ttl =
         rec.state >= C.RECORD_STATE.PROVIDER || Object.keys(rec.data).length === 0 ? 1e3 : 10e3
-
-      if (rec._dirty) {
-        if (batch) {
-          batch.put(rec.name, rec._dirty)
-        } else if (this._cache.put) {
-          this._cache.put(rec.name, rec._dirty)
-        } else if (this._cache.set) {
-          this._cache.set(rec.name, rec._dirty)
-        }
-        rec._dirty = null
-      }
 
       if (this._now - timestamp <= ttl) {
         continue
@@ -110,14 +74,6 @@ const RecordHandler = function (options, connection, client) {
         this._schedule(prune)
         break
       }
-    }
-
-    if (batch) {
-      batch.write((err) => {
-        if (err) {
-          this._client._$onError(C.TOPIC.RECORD, C.EVENT.CACHE_ERROR, err)
-        }
-      })
     }
   }
 
@@ -139,10 +95,10 @@ Object.defineProperty(RecordHandler.prototype, 'connected', {
 
 Object.defineProperty(RecordHandler.prototype, 'stats', {
   get: function stats() {
-    return Object.assign({}, this._stats, {
+    return {
       listeners: this._listeners.size,
       records: this._records.size,
-    })
+    }
   },
 })
 

@@ -10,69 +10,18 @@ const EMPTY_ENTRY = utils.deepFreeze([null, null, null])
 
 const Record = function (name, handler) {
   this._handler = handler
-  this._stats = handler._stats
   this._prune = handler._prune
   this._pendingWrite = handler._pendingWrite
-  this._cache = handler._cache
   this._client = handler._client
   this._connection = handler._connection
   this._updates = null
 
   this._name = name
-  this._subscribed = false
   this._provided = false
-  this._loading = true
-  this._dirty = null
   this._entry = EMPTY_ENTRY
   this._patchQueue = []
   this._patchData = null
   this._usages = 0
-
-  this.ref()
-  this._cache.get(this.name, (err, entry) => {
-    this.unref()
-
-    this._loading = false
-
-    if (err && (err.notFound || /notfound/i.test(err))) {
-      err = null
-      entry = null
-    }
-
-    if (err) {
-      this._client._$onError(C.TOPIC.RECORD, C.EVENT.CACHE_ERROR, err, [
-        this.name,
-        this.version,
-        this.state,
-      ])
-    } else if (entry) {
-      invariant(
-        typeof entry[0] === 'string' && entry[1] && typeof entry[1] === 'object',
-        this.name + ' entry must be [string, object]'
-      )
-
-      this._stats.hits += 1
-
-      if (Object.keys(entry[1]).length === 0) {
-        entry[1] = Array.isArray(entry[1]) ? jsonPath.EMPTY_ARR : jsonPath.EMPTY_OBJ
-      }
-
-      if (this._patchQueue && this._patchQueue.length && entry[0].charAt(0) === 'I') {
-        this._onError(C.EVENT.USER_ERROR, 'cannot patch provided value')
-        this._patchQueue = []
-        this._patchData = null
-      }
-
-      this._entry = entry
-
-      this.emit('update', this)
-    } else {
-      this._stats.misses += 1
-    }
-
-    this._subscribe()
-  })
-  this._stats.reads += 1
 }
 
 Record.STATE = C.RECORD_STATE
@@ -85,9 +34,8 @@ Record.prototype._$destroy = function () {
   invariant(this.isReady, this.name + ' must be ready to destroy')
   invariant(this._patchQueue == null, this.name + ' must not have patch queue')
 
-  if (this._subscribed) {
+  if (this.connected && this._usages) {
     this._connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.UNSUBSCRIBE, this.name)
-    this._subscribed = false
   }
 
   this._provided = false
@@ -314,7 +262,9 @@ Record.prototype.ref = function () {
   this._usages += 1
   if (this._usages === 1) {
     this._prune.delete(this)
-    this._subscribe()
+    if (this.connected) {
+      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name])
+    }
   }
 }
 
@@ -328,9 +278,7 @@ Record.prototype.unref = function () {
 }
 
 Record.prototype._$onMessage = function (message) {
-  if (!this._subscribed) {
-    // Do nothing...
-  } else if (message.action === C.ACTIONS.UPDATE) {
+  if (message.action === C.ACTIONS.UPDATE) {
     this._onUpdate(message.data)
   } else if (message.action === C.ACTIONS.READ) {
     this._onRead(message.data)
@@ -367,7 +315,6 @@ Record.prototype._update = function (path, data) {
   const nextVersion = this._makeVersion(parseInt(prevVersion) + 1)
 
   this._entry = [nextVersion, nextData, prevVersion]
-  this._dirty = this._entry
 
   const update = [this.name, nextVersion, JSON.stringify(nextData), prevVersion]
 
@@ -418,7 +365,6 @@ Record.prototype._onUpdate = function ([name, version, data]) {
         data = JSON.parse(data)
       }
       this._entry = [version, data, null]
-      this._dirty = this._entry
     } else {
       this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, [
         this.name,
@@ -457,32 +403,18 @@ Record.prototype._onUpdate = function ([name, version, data]) {
   }
 }
 
-Record.prototype._subscribe = function () {
-  if (!this.connected || this._subscribed || this._loading || this._usages === 0) {
-    return
-  }
+Record.prototype._$handleConnectionStateChange = function () {
+  if (this.connected) {
+    if (this._usages) {
+      this._connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this.name)
+    }
 
-  // TODO (fix): Limit number of reads.
-
-  if (this._entry[0]) {
-    this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name, this._entry[0]])
-  } else {
-    this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this.name])
-  }
-
-  this._subscribed = true
-}
-
-Record.prototype._$handleConnectionStateChange = function (connected) {
-  if (connected) {
-    this._subscribe()
     if (this._updates) {
       for (const update of this._updates.values()) {
-        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
+        this._connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
       }
     }
   } else {
-    this._subscribed = false
     this._provided = false
     this._patchQueue = this._patchQueue || []
   }
