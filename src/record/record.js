@@ -181,7 +181,7 @@ Record.prototype.when = function (stateOrNull) {
 
   return new Promise((resolve, reject) => {
     if (this.state >= state) {
-      resolve()
+      resolve(null)
       return
     }
 
@@ -195,7 +195,7 @@ Record.prototype.when = function (stateOrNull) {
       this.off('update', onUpdate)
       this.unref()
 
-      resolve()
+      resolve(null)
     }
 
     // const timeout = setTimeout(() => {
