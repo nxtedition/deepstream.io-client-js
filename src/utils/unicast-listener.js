@@ -13,6 +13,7 @@ class Listener {
     this._connected = false
     this._subscriptions = new Map()
     this._stringify = stringify || JSON.stringify
+    this._recursive = recursive
 
     this._pipe = rxjs.pipe(
       rx.map((value) => {
@@ -24,7 +25,7 @@ class Listener {
           data = value
         } else if (value && typeof value === 'object') {
           data = this._stringify(value)
-        } else if (data != null) {
+        } else {
           throw new Error(`invalid value: ${value}`)
         }
 
@@ -73,23 +74,58 @@ class Listener {
         return
       }
 
-      let value$
-      try {
-        value$ = this._callback(name)
-      } catch (err) {
-        value$ = rxjs.throwError(() => err)
-      }
-
-      if (value$) {
-        const subscription = value$.pipe(this._pipe).subscribe({
-          next: (data) => {
-            if (data == null) {
-              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
-              subscription.unsubscribe()
-              this._subscriptions.set(name, null)
-            } else {
+      const provider = this._subscriptions.get(name) ?? {
+        outerSubscription: null,
+        innerSubscription: null,
+        data$: null,
+        accepted: false,
+        accept: () => {
+          provider.innerSubscription = provider.data$.pipe(this._pipe).subscribe({
+            next: (data) => {
               const version = `INF-${this._connection.hasher.h64ToString(data)}`
               this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
+            },
+            error: (err) => {
+              this._error(name, err)
+              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
+            },
+          })
+        },
+      }
+
+      provider.accepted = true
+
+      if (!provider.outerSubscription) {
+        let value$
+        try {
+          value$ = this._callback(name)
+        } catch (err) {
+          value$ = rxjs.throwError(() => err)
+        }
+
+        if (!this._recursive) {
+          value$ = rxjs.of(value$)
+        }
+
+        provider.outerSubscription = value$.subscribe({
+          next: (data$) => {
+            if (provider.innerSubscription) {
+              provider.innerSubscription.unsubscribe()
+              provider.innerSubscription = null
+            }
+
+            if (data$ == null) {
+              if (provider.accepted) {
+                provider.accepted = false
+                this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [
+                  this._pattern,
+                  name,
+                ])
+              }
+            } else {
+              if (provider.accepted) {
+                provider.accept()
+              }
             }
           },
           error: (err) => {
@@ -97,11 +133,11 @@ class Listener {
             this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
           },
         })
-        this._subscriptions.set(name, subscription)
-      } else {
-        this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
-        this._subscriptions.set(name, null)
+      } else if (!provider.innerSubscription) {
+        provider.accept()
       }
+
+      this._subscriptions.set(name, provider)
     } else if (message.action === C.ACTIONS.LISTEN_REJECT) {
       if (!this._subscriptions.has(name)) {
         this._error(name, 'invalid remove: listener missing')
