@@ -104,7 +104,8 @@ class RecordHandler {
     this._updating = new Map()
 
     this._registry = new FinalizationRegistry((name) => {
-      if (this._cache.get(name)?.deref() == null) {
+      const entry = this._cache.get(key)
+      if (entry && entry.deref && entry.deref() === undefined) {
         this._cache.delete(name)
       }
     })
