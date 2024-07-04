@@ -103,9 +103,9 @@ class RecordHandler {
     this._patching = new Map()
     this._updating = new Map()
 
-    this._registry = new FinalizationRegistry((key) => {
-      if (this._cache.get(key)?.deref() == null) {
-        this._cache.delete(key)
+    this._registry = new FinalizationRegistry((name) => {
+      if (this._cache.get(name)?.deref() == null) {
+        this._cache.delete(name)
       }
     })
 
