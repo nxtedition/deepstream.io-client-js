@@ -1,7 +1,7 @@
 const jsonPath = require('@nxtedition/json-path')
 const utils = require('../utils/utils')
 const C = require('../constants/constants')
-const messageParser = require('../message/message-parser')
+const Message = require('../message/message')
 const xuid = require('xuid')
 const invariant = require('invariant')
 const cloneDeep = require('lodash.clonedeep')
@@ -464,7 +464,7 @@ class Record {
     const prevState = this._state
 
     this._state =
-      hasProvider && messageParser.convertTyped(hasProvider, this._handler._client)
+      hasProvider && Message.decodeTyped(hasProvider, this._handler._client)
         ? C.RECORD_STATE.PROVIDER
         : this._version.charAt(0) === 'I'
         ? C.RECORD_STATE.STALE

@@ -1,8 +1,7 @@
 const BrowserWebSocket = globalThis.WebSocket || globalThis.MozWebSocket
 const utils = require('../utils/utils')
 const NodeWebSocket = utils.isNode ? require('ws') : null
-const messageParser = require('./message-parser')
-const messageBuilder = require('./message-builder')
+const Message = require('./message')
 const C = require('../constants/constants')
 const pkg = require('../../package.json')
 const xxhash = require('xxhash-wasm')
@@ -79,15 +78,15 @@ Connection.prototype.authenticate = function (authParams, callback) {
 }
 
 Connection.prototype.sendMsg = function (topic, action, data) {
-  return this.send(messageBuilder.getMsg(topic, action, data))
+  return this.send(Message.encode(topic, action, data))
 }
 
 Connection.prototype.sendMsg1 = function (topic, action, p0) {
-  return this.send(messageBuilder.getMsg1(topic, action, p0))
+  return this.send(Message.encode(topic, action, [p0]))
 }
 
 Connection.prototype.sendMsg2 = function (topic, action, p0, p1) {
-  return this.send(messageBuilder.getMsg2(topic, action, p0, p1))
+  return this.send(Message.encode(topic, action, [p0, p1]))
 }
 
 Connection.prototype.close = function () {
@@ -101,19 +100,22 @@ Connection.prototype.close = function () {
 }
 
 Connection.prototype._createEndpoint = function () {
-  this._endpoint = NodeWebSocket
-    ? new NodeWebSocket(this._url, {
-        generateMask() {},
-      })
-    : new BrowserWebSocket(this._url)
+  if (NodeWebSocket) {
+    this._endpoint = new NodeWebSocket(this._url, {
+      generateMask() {},
+    })
+  } else {
+    this._endpoint = new BrowserWebSocket(this._url)
+    this._endpoint.binaryType = 'arraybuffer'
+  }
   this._corked = false
 
   this._endpoint.onopen = this._onOpen.bind(this)
   this._endpoint.onerror = this._onError.bind(this)
   this._endpoint.onclose = this._onClose.bind(this)
   this._endpoint.onmessage = BrowserWebSocket
-    ? ({ data }) => this._onMessage(typeof data === 'string' ? data : Buffer.from(data).toString())
-    : ({ data }) => this._onMessage(typeof data === 'string' ? data : data.toString())
+    ? ({ data }) => this._onMessage(Buffer.from(data))
+    : ({ data }) => this._onMessage(data)
 }
 
 Connection.prototype.send = function (message) {
@@ -125,7 +127,10 @@ Connection.prototype.send = function (message) {
       C.TOPIC.CONNECTION,
       C.EVENT.CONNECTION_ERROR,
       err,
-      message.split(C.MESSAGE_PART_SEPERATOR).map((x) => x.slice(0, 256))
+      message
+        .toString()
+        .split(C.MESSAGE_PART_SEPERATOR)
+        .map((x) => x.slice(0, 256))
     )
     return false
   }
@@ -172,14 +177,15 @@ Connection.prototype._submit = function (message) {
 
 Connection.prototype._sendAuthParams = function () {
   this._setState(C.CONNECTION_STATE.AUTHENTICATING)
-  const authMessage = messageBuilder.getMsg(C.TOPIC.AUTH, C.ACTIONS.REQUEST, [
-    this._authParams,
-    pkg.version,
-    utils.isNode
-      ? `Node/${process.version}`
-      : globalThis.navigator && globalThis.navigator.userAgent,
-  ])
-  this._submit(authMessage)
+  this._submit(
+    Message.encode(C.TOPIC.AUTH, C.ACTIONS.REQUEST, [
+      this._authParams,
+      pkg.version,
+      utils.isNode
+        ? `Node/${process.version}`
+        : globalThis.navigator && globalThis.navigator.userAgent,
+    ])
+  )
 }
 
 Connection.prototype._onOpen = function () {
@@ -219,13 +225,11 @@ Connection.prototype._onClose = function () {
   }
 }
 
-Connection.prototype._onMessage = function (data) {
-  // Remove MESSAGE_SEPERATOR if exists.
-  if (data.charCodeAt(data.length - 1) === 30) {
-    data = data.slice(0, -1)
+Connection.prototype._onMessage = function (raw) {
+  if (raw.length <= 2) {
+    return
   }
-
-  this._recvQueue.push(data)
+  this._recvQueue.push(Message.decode(raw))
   if (!this._processingRecv) {
     this._processingRecv = true
     this._schedule(this._recvMessages)
@@ -245,24 +249,18 @@ Connection.prototype._recvMessages = function (deadline) {
       return
     }
 
-    if (message.length <= 2) {
-      continue
-    }
+    this.emit('recv', message)
 
     try {
-      messageParser.parseMessage(message, this._client, this._message)
-
-      this.emit('recv', this._message)
-
-      if (this._message.topic === C.TOPIC.CONNECTION) {
-        this._handleConnectionResponse(this._message)
-      } else if (this._message.topic === C.TOPIC.AUTH) {
-        this._handleAuthResponse(this._message)
+      if (message.topic === C.TOPIC.CONNECTION) {
+        this._handleConnectionResponse(message)
+      } else if (message.topic === C.TOPIC.AUTH) {
+        this._handleAuthResponse(message)
       } else {
-        this._client._$onMessage(this._message)
+        this._client._$onMessage(message)
       }
     } catch (err) {
-      this._onError(err)
+      this._client._onError(err)
     }
   }
 
@@ -271,7 +269,7 @@ Connection.prototype._recvMessages = function (deadline) {
 
 Connection.prototype._handleConnectionResponse = function (message) {
   if (message.action === C.ACTIONS.PING) {
-    this._submit(messageBuilder.getMsg(C.TOPIC.CONNECTION, C.ACTIONS.PONG))
+    this._submit(Message.encode(C.TOPIC.CONNECTION, C.ACTIONS.PONG))
   } else if (message.action === C.ACTIONS.ACK) {
     this._setState(C.CONNECTION_STATE.AWAITING_AUTHENTICATION)
     if (this._authParams) {
@@ -279,9 +277,7 @@ Connection.prototype._handleConnectionResponse = function (message) {
     }
   } else if (message.action === C.ACTIONS.CHALLENGE) {
     this._setState(C.CONNECTION_STATE.CHALLENGING)
-    this._submit(
-      messageBuilder.getMsg(C.TOPIC.CONNECTION, C.ACTIONS.CHALLENGE_RESPONSE, [this._url])
-    )
+    this._submit(Message.encode(C.TOPIC.CONNECTION, C.ACTIONS.CHALLENGE_RESPONSE, [this._url]))
   } else if (message.action === C.ACTIONS.REJECTION) {
     this._challengeDenied = true
     this.close()
@@ -316,10 +312,10 @@ Connection.prototype._handleAuthResponse = function (message) {
 }
 
 Connection.prototype._getAuthData = function (data) {
-  if (data === undefined) {
+  if (!data) {
     return null
   } else {
-    return messageParser.convertTyped(data, this._client)
+    return Message.decodeTyped(data, this._client)
   }
 }
 

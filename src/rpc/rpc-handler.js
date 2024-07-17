@@ -1,7 +1,6 @@
 const C = require('../constants/constants')
 const RpcResponse = require('./rpc-response')
-const messageParser = require('../message/message-parser')
-const messageBuilder = require('../message/message-builder')
+const Message = require('../message/message')
 const xuid = require('xuid')
 
 const RpcHandler = function (options, connection, client) {
@@ -97,7 +96,7 @@ RpcHandler.prototype.make = function (name, data, callback) {
     data,
     callback,
   })
-  this._connection.sendMsg(C.TOPIC.RPC, C.ACTIONS.REQUEST, [name, id, messageBuilder.typed(data)])
+  this._connection.sendMsg(C.TOPIC.RPC, C.ACTIONS.REQUEST, [name, id, Message.encodeTyped(data)])
 
   return promise
 }
@@ -111,7 +110,7 @@ RpcHandler.prototype._respond = function (message) {
   if (callback) {
     let promise
     try {
-      promise = Promise.resolve(callback(messageParser.convertTyped(data, this._client), response))
+      promise = Promise.resolve(callback(Message.decodeTyped(data, this._client), response))
     } catch (err) {
       promise = Promise.reject(err)
     }
@@ -156,7 +155,7 @@ RpcHandler.prototype._$handle = function (message) {
         })
       )
     } else {
-      rpc.callback(null, messageParser.convertTyped(data, this._client))
+      rpc.callback(null, Message.decodeTyped(data, this._client))
     }
   }
 }
