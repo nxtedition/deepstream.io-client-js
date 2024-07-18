@@ -1,5 +1,5 @@
 const C = require('../constants/constants')
-const messageBuilder = require('../message/message-builder')
+const Message = require('../message/message')
 
 const RpcResponse = function (connection, name, id) {
   this._connection = connection
@@ -40,7 +40,7 @@ RpcResponse.prototype.send = function (data) {
   this._connection.sendMsg(C.TOPIC.RPC, C.ACTIONS.RESPONSE, [
     this._name,
     this._id,
-    messageBuilder.typed(data),
+    Message.encodeTyped(data),
   ])
 }
 

@@ -1,9 +1,8 @@
-const messageBuilder = require('../message/message-builder')
-const messageParser = require('../message/message-parser')
 const C = require('../constants/constants')
 const MulticastListener = require('../utils/multicast-listener')
 const UnicastListener = require('../utils/unicast-listener')
 const EventEmitter = require('component-emitter2')
+const Message = require('../message/message')
 const rxjs = require('rxjs')
 
 const EventHandler = function (options, connection, client) {
@@ -105,7 +104,7 @@ EventHandler.prototype.emit = function (name, data) {
     throw new Error('invalid argument name')
   }
 
-  this._connection.sendMsg(C.TOPIC.EVENT, C.ACTIONS.EVENT, [name, messageBuilder.typed(data)])
+  this._connection.sendMsg(C.TOPIC.EVENT, C.ACTIONS.EVENT, [name, Message.encodeTyped(data)])
   this._emitter.emit(name, data)
   this._stats.emitted += 1
 }
@@ -143,7 +142,7 @@ EventHandler.prototype._$handle = function (message) {
 
   if (message.action === C.ACTIONS.EVENT) {
     if (message.data && message.data.length === 2) {
-      this._emitter.emit(name, messageParser.convertTyped(data, this._client))
+      this._emitter.emit(name, Message.decodeTyped(data, this._client))
     } else {
       this._emitter.emit(name)
     }
