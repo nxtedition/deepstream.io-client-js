@@ -389,7 +389,7 @@ export default class Record {
     this._version = nextVersion
   }
 
-  _onUpdate([, version, data]) {
+  _onUpdate([, version, data, hasProvider]) {
     const prevData = this._data
     const prevVersion = this._version
     const prevState = this._state
@@ -422,7 +422,9 @@ export default class Record {
       this._onPatching(false)
     }
 
-    if (this._state < C.RECORD_STATE.SERVER) {
+    if (this._state < C.RECORD_STATE.PROVIDER && hasProvider === 'T') {
+      this._state = C.RECORD_STATE.PROVIDER
+    } else if (this._state < C.RECORD_STATE.SERVER) {
       this._state = this._version.charAt(0) === 'I' ? C.RECORD_STATE.STALE : C.RECORD_STATE.SERVER
     }
 
