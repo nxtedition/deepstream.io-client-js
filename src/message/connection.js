@@ -151,8 +151,8 @@ Connection.prototype.send = function (message) {
 Connection.prototype._submit = function (message) {
   const { maxPacketSize } = this._options
 
-  if (message.byteLength > maxPacketSize) {
-    const err = new Error(`Packet to big: ${message.byteLength} > ${maxPacketSize}`)
+  if (message.length > maxPacketSize) {
+    const err = new Error(`Packet to big: ${message.length} > ${maxPacketSize}`)
     this._client._$onError(C.TOPIC.CONNECTION, C.EVENT.CONNECTION_ERROR, err)
     return false
   } else if (this._endpoint.readyState === this._endpoint.OPEN) {
@@ -170,7 +170,7 @@ Connection.prototype._sendAuthParams = function () {
   this._setState(C.CONNECTION_STATE.AUTHENTICATING)
   const authMessage = messageBuilder.getMsg(C.TOPIC.AUTH, C.ACTIONS.REQUEST, [
     this._authParams,
-    '26.0.8', // TODO (fix): How to read from package.json?
+    '24.3.1', // TODO (fix): How to read from package.json?
     utils.isNode
       ? `Node/${process.version}`
       : globalThis.navigator && globalThis.navigator.userAgent,

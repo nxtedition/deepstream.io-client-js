@@ -68,29 +68,27 @@ class Listener {
         value$ = rxjs.throwError(() => err)
       }
 
-      const key = this._handler.getKey(name)
-
       if (value$) {
         const subscription = value$.pipe(PIPE).subscribe({
           next: (data) => {
             if (data == null) {
-              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, key])
+              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
               this._subscriptions.delete(name)
               subscription.unsubscribe()
             } else {
               const version = `INF-${this._connection.hasher.h64ToString(data)}`
-              this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [key, version, data])
+              this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
             }
           },
           error: (err) => {
             this._error(name, err)
-            this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, key])
+            this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
             this._subscriptions.delete(name)
           },
         })
         this._subscriptions.set(name, subscription)
       } else {
-        this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, key])
+        this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
       }
     } else if (message.action === C.ACTIONS.LISTEN_REJECT) {
       const subscription = this._subscriptions.get(name)
