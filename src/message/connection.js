@@ -6,6 +6,7 @@ import xxhash from 'xxhash-wasm'
 import FixedQueue from '../utils/fixed-queue.js'
 import Emitter from 'component-emitter2'
 
+const HASHER = await xxhash()
 const NodeWebSocket = utils.isNode ? await import('ws').then((x) => x.default) : null
 const BrowserWebSocket = globalThis.WebSocket || globalThis.MozWebSocket
 
@@ -39,11 +40,9 @@ const Connection = function (client, url, options) {
 
   this._state = C.CONNECTION_STATE.CLOSED
 
-  this.hasher = null
-  xxhash().then((hasher) => {
-    this.hasher = hasher
-    this._createEndpoint()
-  })
+  this.hasher = HASHER
+
+  this._createEndpoint()
 }
 
 Emitter(Connection.prototype)
