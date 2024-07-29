@@ -1,9 +1,8 @@
-const C = require('../constants/constants')
-const rx = require('rxjs/operators')
-const rxjs = require('rxjs')
+import * as C from '../constants/constants.js'
+import * as rxjs from 'rxjs'
 
 const PIPE = rxjs.pipe(
-  rx.map((value) => {
+  rxjs.map((value) => {
     let data
     if (value && typeof value === 'string') {
       if (value.charAt(0) !== '{' && value.charAt(0) !== '[') {
@@ -18,7 +17,7 @@ const PIPE = rxjs.pipe(
 
     return data
   }),
-  rx.distinctUntilChanged()
+  rxjs.distinctUntilChanged(),
 )
 
 class Listener {
@@ -127,4 +126,4 @@ class Listener {
   }
 }
 
-module.exports = Listener
+export default Listener

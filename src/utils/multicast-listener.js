@@ -1,5 +1,5 @@
-const C = require('../constants/constants')
-const rxjs = require('rxjs')
+import * as C from '../constants/constants.js'
+import * as rxjs from 'rxjs'
 
 class Listener {
   constructor(topic, pattern, callback, handler, { recursive = false, stringify = null } = {}) {
@@ -40,7 +40,7 @@ class Listener {
         C.TOPIC.RECORD,
         C.EVENT.NOT_CONNECTED,
         new Error('received message while not connected'),
-        message
+        message,
       )
       return
     }
@@ -77,7 +77,7 @@ class Listener {
         provider.accepted = false
         provider.sending = false
 
-        clearTimeout(provider.timeout)
+        globalThis.clearTimeout(provider.timeout)
         provider.timeout = null
 
         provider.patternSubscription?.unsubscribe()
@@ -101,7 +101,7 @@ class Listener {
         this._connection.sendMsg(
           this._topic,
           accepted ? C.ACTIONS.LISTEN_ACCEPT : C.ACTIONS.LISTEN_REJECT,
-          [this._pattern, provider.name]
+          [this._pattern, provider.name],
         )
 
         provider.version = null
@@ -229,4 +229,4 @@ class Listener {
   }
 }
 
-module.exports = Listener
+export default Listener

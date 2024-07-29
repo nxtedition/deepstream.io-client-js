@@ -1,13 +1,13 @@
-const jsonPath = require('@nxtedition/json-path')
-const utils = require('../utils/utils')
-const C = require('../constants/constants')
-const messageParser = require('../message/message-parser')
-const xuid = require('xuid')
-const invariant = require('invariant')
-const cloneDeep = require('lodash.clonedeep')
-const timers = require('../utils/timers')
+import jsonPath from '@nxtedition/json-path'
+import * as utils from '../utils/utils.js'
+import * as C from '../constants/constants.js'
+import messageParser from '../message/message-parser.js'
+import xuid from 'xuid'
+import invariant from 'invariant'
+import cloneDeep from 'lodash.clonedeep'
+import * as timers from '../utils/timers.js'
 
-class Record {
+export default class Record {
   static STATE = C.RECORD_STATE
 
   constructor(name, handler) {
@@ -24,7 +24,7 @@ class Record {
     this._emitting = false
     /** @type Map? */ this._updating = null
     /** @type Array? */ this._patching = null
-    this._subscribed = connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this._name)
+    this._subscribed = connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this._name])
   }
 
   /** @type {string} */
@@ -62,7 +62,7 @@ class Record {
     if (this._refs === 1) {
       this._handler._onPruning(this, false)
       this._subscribed =
-        this._subscribed || connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this._name)
+        this._subscribed || connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this._name])
     }
     return this
   }
@@ -249,7 +249,7 @@ class Record {
           onDone(
             Object.assign(new Error(`timeout  ${this.name} [${current}<${expected}]`), {
               code: 'ETIMEDOUT',
-            })
+            }),
           )
         }, timeout)
       }
@@ -324,7 +324,7 @@ class Record {
 
     if (connected) {
       this._subscribed =
-        this._refs > 0 && connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this._name)
+        this._refs > 0 && connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this._name])
 
       if (this._updating) {
         for (const update of this._updating.values()) {
@@ -349,7 +349,7 @@ class Record {
     invariant(!this._updating, 'must not have updates')
 
     if (this._subscribed) {
-      connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.UNSUBSCRIBE, this._name)
+      connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UNSUBSCRIBE, [this._name])
       this._subscribed = false
     }
 
@@ -470,8 +470,8 @@ class Record {
       hasProvider && messageParser.convertTyped(hasProvider, this._handler._client)
         ? C.RECORD_STATE.PROVIDER
         : this._version.charAt(0) === 'I'
-        ? C.RECORD_STATE.STALE
-        : C.RECORD_STATE.SERVER
+          ? C.RECORD_STATE.STALE
+          : C.RECORD_STATE.SERVER
 
     if (this._state !== prevState) {
       this._emitUpdate()
@@ -571,5 +571,3 @@ Object.defineProperty(Record.prototype, 'hasProvider', {
     return this.state >= C.RECORD_STATE.PROVIDER
   },
 })
-
-module.exports = Record

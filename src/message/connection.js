@@ -1,13 +1,13 @@
+import * as utils from '../utils/utils.js'
+import messageParser from './message-parser.js'
+import * as messageBuilder from './message-builder.js'
+import * as C from '../constants/constants.js'
+import xxhash from 'xxhash-wasm'
+import FixedQueue from '../utils/fixed-queue.js'
+import Emitter from 'component-emitter2'
+
+const NodeWebSocket = utils.isNode ? await import('ws').then((x) => x.default) : null
 const BrowserWebSocket = globalThis.WebSocket || globalThis.MozWebSocket
-const utils = require('../utils/utils')
-const NodeWebSocket = utils.isNode ? require('ws') : null
-const messageParser = require('./message-parser')
-const messageBuilder = require('./message-builder')
-const C = require('../constants/constants')
-const pkg = require('../../package.json')
-const xxhash = require('xxhash-wasm')
-const FixedQueue = require('../utils/fixed-queue')
-const Emitter = require('component-emitter2')
 
 const Connection = function (client, url, options) {
   this._client = client
@@ -82,20 +82,12 @@ Connection.prototype.sendMsg = function (topic, action, data) {
   return this.send(messageBuilder.getMsg(topic, action, data))
 }
 
-Connection.prototype.sendMsg1 = function (topic, action, p0) {
-  return this.send(messageBuilder.getMsg1(topic, action, p0))
-}
-
-Connection.prototype.sendMsg2 = function (topic, action, p0, p1) {
-  return this.send(messageBuilder.getMsg2(topic, action, p0, p1))
-}
-
 Connection.prototype.close = function () {
   this._deliberateClose = true
   this._endpoint?.close()
 
   if (this._reconnectTimeout) {
-    clearTimeout(this._reconnectTimeout)
+    globalThis.clearTimeout(this._reconnectTimeout)
     this._reconnectTimeout = null
   }
 }
@@ -130,7 +122,7 @@ Connection.prototype.send = function (message) {
       C.TOPIC.CONNECTION,
       C.EVENT.CONNECTION_ERROR,
       err,
-      message.split(C.MESSAGE_PART_SEPERATOR).map((x) => x.slice(0, 256))
+      message.split(C.MESSAGE_PART_SEPERATOR).map((x) => x.slice(0, 256)),
     )
     return false
   }
@@ -145,7 +137,7 @@ Connection.prototype.send = function (message) {
   if (this._endpoint._socket && !this._corked) {
     this._endpoint._socket.cork()
     this._corked = true
-    setTimeout(() => {
+    globalThis.setTimeout(() => {
       this._endpoint._socket.uncork()
       this._corked = false
     }, 1)
@@ -179,7 +171,7 @@ Connection.prototype._sendAuthParams = function () {
   this._setState(C.CONNECTION_STATE.AUTHENTICATING)
   const authMessage = messageBuilder.getMsg(C.TOPIC.AUTH, C.ACTIONS.REQUEST, [
     this._authParams,
-    pkg.version,
+    '24.0.0',
     utils.isNode
       ? `Node/${process.version}`
       : globalThis.navigator && globalThis.navigator.userAgent,
@@ -285,7 +277,7 @@ Connection.prototype._handleConnectionResponse = function (message) {
   } else if (message.action === C.ACTIONS.CHALLENGE) {
     this._setState(C.CONNECTION_STATE.CHALLENGING)
     this._submit(
-      messageBuilder.getMsg(C.TOPIC.CONNECTION, C.ACTIONS.CHALLENGE_RESPONSE, [this._url])
+      messageBuilder.getMsg(C.TOPIC.CONNECTION, C.ACTIONS.CHALLENGE_RESPONSE, [this._url]),
     )
   } else if (message.action === C.ACTIONS.REJECTION) {
     this._challengeDenied = true
@@ -353,10 +345,16 @@ Connection.prototype._tryReconnect = function () {
 
   if (this._reconnectionAttempt < this._options.maxReconnectAttempts) {
     this._setState(C.CONNECTION_STATE.RECONNECTING)
-    this._reconnectTimeout = setTimeout(() => {
-      this._reconnectTimeout = null
-      this._createEndpoint()
-    }, Math.min(this._options.maxReconnectInterval, this._options.reconnectIntervalIncrement * this._reconnectionAttempt))
+    this._reconnectTimeout = setTimeout(
+      () => {
+        this._reconnectTimeout = null
+        this._createEndpoint()
+      },
+      Math.min(
+        this._options.maxReconnectInterval,
+        this._options.reconnectIntervalIncrement * this._reconnectionAttempt,
+      ),
+    )
     this._reconnectionAttempt++
   } else {
     this._clearReconnect()
@@ -373,4 +371,4 @@ Connection.prototype._clearReconnect = function () {
   this._reconnectionAttempt = 0
 }
 
-module.exports = Connection
+export default Connection

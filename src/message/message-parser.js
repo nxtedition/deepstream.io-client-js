@@ -1,4 +1,4 @@
-const C = require('../constants/constants')
+import * as C from '../constants/constants.js'
 
 const MessageParser = function () {
   this._actions = this._getActions()
@@ -62,7 +62,7 @@ MessageParser.prototype.parseMessage = function (message, client, result) {
     client._$onError(
       C.TOPIC.ERROR,
       C.EVENT.MESSAGE_PARSE_ERROR,
-      new Error('Insufficiant message parts')
+      new Error('Insufficiant message parts'),
     )
     return null
   }
@@ -77,7 +77,7 @@ MessageParser.prototype.parseMessage = function (message, client, result) {
       C.TOPIC.ERROR,
       C.EVENT.MESSAGE_PARSE_ERROR,
       new Error('Unknown action'),
-      message
+      message,
     )
     return null
   }
@@ -88,4 +88,4 @@ MessageParser.prototype.parseMessage = function (message, client, result) {
   result.data = parts.splice(2)
 }
 
-module.exports = new MessageParser()
+export default new MessageParser()
