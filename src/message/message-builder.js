@@ -1,82 +1,36 @@
-import * as C from '../constants/constants.js'
+const C = require('../constants/constants')
 
-const poolEncoder = new TextEncoder()
+const SEP = C.MESSAGE_PART_SEPERATOR
 
-let poolSize
-let poolBuffer
-let poolView
-let poolOffset
-
-function reallocPool(size) {
-  poolSize = size ?? poolSize ?? 1024 * 1024
-  poolBuffer = new Uint8Array(new ArrayBuffer(poolSize))
-  poolView = new DataView(poolBuffer.buffer)
-  poolOffset = 0
-}
-
-function alignPool() {
-  // Ensure aligned slices
-  if (poolOffset & 0x7) {
-    poolOffset |= 0x7
-    poolOffset++
-  }
-}
-
-reallocPool()
-
-export function getMsg(topic, action, data) {
+module.exports.getMsg = function (topic, action, data) {
   if (data && !(data instanceof Array)) {
     throw new Error('data must be an array')
   }
 
-  if (poolOffset + poolSize / 16 >= poolSize) {
-    reallocPool()
-  } else {
-    alignPool()
-  }
-
-  const start = poolOffset
-
-  poolBuffer[poolOffset++] = topic.charCodeAt(0)
-  poolBuffer[poolOffset++] = 31
-  for (let n = 0; n < action.length; n++) {
-    poolBuffer[poolOffset++] = action.charCodeAt(n)
-  }
+  const sendData = [topic, action]
 
   if (data) {
     for (let i = 0; i < data.length; i++) {
-      const type = typeof data[i]
-      if (data[i] == null) {
-        poolBuffer[poolOffset++] = 31
-      } else if (type === 'object') {
-        poolBuffer[poolOffset++] = 31
-        const res = poolEncoder.encodeInto(
-          JSON.stringify(data[i]),
-          new Uint8Array(poolBuffer.buffer, poolOffset),
-        )
-        poolOffset += res.written
-      } else if (type === 'bigint') {
-        poolBuffer[poolOffset++] = 31
-        poolView.setBigUint64(poolOffset, data[i], false)
-        poolOffset += 8
-      } else if (type === 'string') {
-        poolBuffer[poolOffset++] = 31
-        const res = poolEncoder.encodeInto(data[i], new Uint8Array(poolBuffer.buffer, poolOffset))
-        poolOffset += res.written
+      if (typeof data[i] === 'object') {
+        sendData.push(JSON.stringify(data[i]))
       } else {
-        throw new Error('invalid data')
-      }
-
-      if (poolOffset >= poolBuffer.length) {
-        reallocPool(start === 0 ? poolSize * 2 : poolSize)
-        return getMsg(topic, action, data)
+        sendData.push(data[i])
       }
     }
   }
-  return new Uint8Array(poolBuffer.buffer, start, poolOffset - start)
+
+  return sendData.join(SEP)
 }
 
-export function typed(value) {
+module.exports.getMsg1 = function (topic, action, p0) {
+  return `${topic}${SEP}${action}${SEP}${p0}`
+}
+
+module.exports.getMsg2 = function (topic, action, p0, p1) {
+  return `${topic}${SEP}${action}${SEP}${p0}${SEP}${p1}`
+}
+
+module.exports.typed = function (value) {
   const type = typeof value
 
   if (type === 'string') {

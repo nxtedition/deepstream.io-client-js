@@ -1,8 +1,11 @@
 const NODE_ENV = typeof process !== 'undefined' && process.env && process.env.NODE_ENV
-export const isNode = typeof process !== 'undefined' && process.toString() === '[object process]'
-export const isProduction = NODE_ENV === 'production'
+const isNode = typeof process !== 'undefined' && process.toString() === '[object process]'
+const isProduction = NODE_ENV === 'production'
 
-export function deepFreeze(o) {
+module.exports.isNode = isNode
+module.exports.isProduction = isProduction
+
+module.exports.deepFreeze = function (o) {
   if (isProduction) {
     return o
   }
@@ -13,12 +16,12 @@ export function deepFreeze(o) {
 
   Object.freeze(o)
 
-  Object.getOwnPropertyNames(o).forEach((prop) => deepFreeze(o[prop]))
+  Object.getOwnPropertyNames(o).forEach((prop) => module.exports.deepFreeze(o[prop]))
 
   return o
 }
 
-export function splitRev(s) {
+module.exports.splitRev = function (s) {
   if (!s) {
     return [-1, '00000000000000']
   }
@@ -29,7 +32,7 @@ export function splitRev(s) {
   return [ver.charAt(0) === 'I' ? Infinity : parseInt(ver, 10), s.slice(i + 1)]
 }
 
-export function isPlainObject(value, isPlainJSON) {
+module.exports.isPlainObject = function (value, isPlainJSON) {
   if (isPlainJSON) {
     return value && typeof value === 'object' && !Array.isArray(value)
   }
@@ -50,13 +53,13 @@ export function isPlainObject(value, isPlainJSON) {
   return Object.getPrototypeOf(value) === proto
 }
 
-export function isSameOrNewer(a, b) {
-  const [av, ar] = splitRev(a)
-  const [bv, br] = splitRev(b)
+module.exports.isSameOrNewer = function (a, b) {
+  const [av, ar] = module.exports.splitRev(a)
+  const [bv, br] = module.exports.splitRev(b)
   return av > bv || (av === bv && ar >= br)
 }
 
-export function shallowCopy(obj) {
+module.exports.shallowCopy = function (obj) {
   if (Array.isArray(obj)) {
     return obj.slice(0)
   }
@@ -69,15 +72,15 @@ export function shallowCopy(obj) {
   return copy
 }
 
-export function setTimeout(callback, timeoutDuration) {
+module.exports.setTimeout = function (callback, timeoutDuration) {
   if (timeoutDuration !== null) {
-    return globalThis.setTimeout(callback, timeoutDuration)
+    return setTimeout(callback, timeoutDuration)
   } else {
     return -1
   }
 }
 
-export function setInterval(callback, intervalDuration) {
+module.exports.setInterval = function (callback, intervalDuration) {
   if (intervalDuration !== null) {
     return setInterval(callback, intervalDuration)
   } else {
@@ -85,7 +88,7 @@ export function setInterval(callback, intervalDuration) {
   }
 }
 
-export function compareRev(a, b) {
+module.exports.compareRev = function compareRev(a, b) {
   if (!a) {
     return b ? -1 : 0
   }
@@ -115,7 +118,7 @@ export function compareRev(a, b) {
   return 0
 }
 
-export class AbortError extends Error {
+module.exports.AbortError = class AbortError extends Error {
   constructor() {
     super('The operation was aborted')
     this.code = 'ABORT_ERR'
@@ -127,7 +130,7 @@ function defaultSchedule(fn) {
   setTimeout(fn, 0)
 }
 
-export const schedule = isNode ? defaultSchedule : window.requestIdleCallback
+module.exports.schedule = isNode ? defaultSchedule : window.requestIdleCallback
 
 const abortSignals = new WeakMap()
 const onAbort = function () {
@@ -139,7 +142,7 @@ const onAbort = function () {
   }
 }
 
-export function addAbortListener(signal, handler) {
+module.exports.addAbortListener = function addAbortListener(signal, handler) {
   if (!signal) {
     return
   }
@@ -157,7 +160,7 @@ export function addAbortListener(signal, handler) {
   }
 }
 
-export function removeAbortListener(signal, handler) {
+module.exports.removeAbortListener = function removeAbortListener(signal, handler) {
   if (!signal) {
     return
   }
