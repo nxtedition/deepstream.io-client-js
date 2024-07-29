@@ -245,10 +245,6 @@ Connection.prototype._recvMessages = function (deadline) {
       continue
     }
 
-    if (this._logger) {
-      this._logger.trace(message, 'receive')
-    }
-
     messageParser.parseMessage(message, this._client, this._message)
 
     this.emit('recv', this._message)
