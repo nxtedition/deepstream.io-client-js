@@ -1,10 +1,10 @@
-import * as C from '../constants/constants.js'
-import * as messageBuilder from '../message/message-builder.js'
-import * as messageParser from '../message/message-parser.js'
-import MulticastListener from '../utils/multicast-listener.js'
-import UnicastListener from '../utils/unicast-listener.js'
-import EventEmitter from 'component-emitter2'
-import * as rxjs from 'rxjs'
+const messageBuilder = require('../message/message-builder')
+const messageParser = require('../message/message-parser')
+const C = require('../constants/constants')
+const MulticastListener = require('../utils/multicast-listener')
+const UnicastListener = require('../utils/unicast-listener')
+const EventEmitter = require('component-emitter2')
+const rxjs = require('rxjs')
 
 const EventHandler = function (options, connection, client) {
   this._options = options
@@ -164,4 +164,4 @@ EventHandler.prototype._onConnectionStateChange = function (connected) {
   }
 }
 
-export default EventHandler
+module.exports = EventHandler

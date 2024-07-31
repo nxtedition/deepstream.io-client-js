@@ -1,14 +1,15 @@
-import * as utils from '../utils/utils.js'
-import * as messageParser from './message-parser.js'
-import * as messageBuilder from './message-builder.js'
-import * as C from '../constants/constants.js'
-import FixedQueue from '../utils/fixed-queue.js'
-import Emitter from 'component-emitter2'
-
-const NodeWebSocket = utils.isNode ? await import('ws').then((x) => x.default) : null
 const BrowserWebSocket = globalThis.WebSocket || globalThis.MozWebSocket
+const utils = require('../utils/utils')
+const NodeWebSocket = utils.isNode ? require('ws') : null
+const messageParser = require('./message-parser')
+const messageBuilder = require('./message-builder')
+const C = require('../constants/constants')
+const pkg = require('../../package.json')
+const xxhash = require('xxhash-wasm')
+const FixedQueue = require('../utils/fixed-queue')
+const Emitter = require('component-emitter2')
 
-export default function Connection(client, url, options) {
+const Connection = function (client, url, options) {
   this._client = client
   this._options = options
   this._logger = options.logger
@@ -26,7 +27,6 @@ export default function Connection(client, url, options) {
     action: null,
     data: null,
   }
-  this._decoder = new globalThis.TextDecoder()
   this._recvQueue = new FixedQueue()
   this._reconnectTimeout = null
   this._reconnectionAttempt = 0
@@ -39,7 +39,11 @@ export default function Connection(client, url, options) {
 
   this._state = C.CONNECTION_STATE.CLOSED
 
-  this._createEndpoint()
+  this.hasher = null
+  xxhash().then((hasher) => {
+    this.hasher = hasher
+    this._createEndpoint()
+  })
 }
 
 Emitter(Connection.prototype)
@@ -78,6 +82,14 @@ Connection.prototype.sendMsg = function (topic, action, data) {
   return this.send(messageBuilder.getMsg(topic, action, data))
 }
 
+Connection.prototype.sendMsg1 = function (topic, action, p0) {
+  return this.send(messageBuilder.getMsg1(topic, action, p0))
+}
+
+Connection.prototype.sendMsg2 = function (topic, action, p0, p1) {
+  return this.send(messageBuilder.getMsg2(topic, action, p0, p1))
+}
+
 Connection.prototype.close = function () {
   this._deliberateClose = true
   this._endpoint?.close()
@@ -89,23 +101,19 @@ Connection.prototype.close = function () {
 }
 
 Connection.prototype._createEndpoint = function () {
-  if (utils.isNode) {
-    this._endpoint = new NodeWebSocket(this._url, {
-      generateMask() {},
-    })
-    this._endpoint.binaryType = 'nodebuffer'
-  } else {
-    this._endpoint = new BrowserWebSocket(this._url)
-    this._endpoint.binaryType = 'arraybuffer'
-  }
-
+  this._endpoint = NodeWebSocket
+    ? new NodeWebSocket(this._url, {
+        generateMask() {},
+      })
+    : new BrowserWebSocket(this._url)
   this._corked = false
 
   this._endpoint.onopen = this._onOpen.bind(this)
   this._endpoint.onerror = this._onError.bind(this)
   this._endpoint.onclose = this._onClose.bind(this)
-  this._endpoint.onmessage = ({ data }) =>
-    this._onMessage(typeof data === 'string' ? data : this._decoder.decode(data))
+  this._endpoint.onmessage = BrowserWebSocket
+    ? ({ data }) => this._onMessage(typeof data === 'string' ? data : Buffer.from(data).toString())
+    : ({ data }) => this._onMessage(typeof data === 'string' ? data : data.toString())
 }
 
 Connection.prototype.send = function (message) {
@@ -166,7 +174,7 @@ Connection.prototype._sendAuthParams = function () {
   this._setState(C.CONNECTION_STATE.AUTHENTICATING)
   const authMessage = messageBuilder.getMsg(C.TOPIC.AUTH, C.ACTIONS.REQUEST, [
     this._authParams,
-    '24.4.4',
+    pkg.version,
     utils.isNode
       ? `Node/${process.version}`
       : globalThis.navigator && globalThis.navigator.userAgent,
@@ -365,3 +373,5 @@ Connection.prototype._clearReconnect = function () {
   }
   this._reconnectionAttempt = 0
 }
+
+module.exports = Connection

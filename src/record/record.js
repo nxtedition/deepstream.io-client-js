@@ -1,11 +1,11 @@
-import jsonPath from '@nxtedition/json-path'
-import * as utils from '../utils/utils.js'
-import * as C from '../constants/constants.js'
-import * as messageParser from '../message/message-parser.js'
-import xuid from 'xuid'
-import invariant from 'invariant'
-import cloneDeep from 'lodash.clonedeep'
-import * as timers from '../utils/timers.js'
+const jsonPath = require('@nxtedition/json-path')
+const utils = require('../utils/utils')
+const C = require('../constants/constants')
+const messageParser = require('../message/message-parser')
+const xuid = require('xuid')
+const invariant = require('invariant')
+const cloneDeep = require('lodash.clonedeep')
+const timers = require('../utils/timers')
 
 class Record {
   static STATE = C.RECORD_STATE
@@ -14,6 +14,7 @@ class Record {
     const connection = handler._connection
 
     this._handler = handler
+
     this._name = name
     this._version = ''
     this._data = jsonPath.EMPTY
@@ -21,10 +22,9 @@ class Record {
     this._refs = 0
     this._subscriptions = []
     this._emitting = false
-
     /** @type Map? */ this._updating = null
     /** @type Array? */ this._patching = null
-    this._subscribed = connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this._name])
+    this._subscribed = connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this._name)
   }
 
   /** @type {string} */
@@ -62,7 +62,7 @@ class Record {
     if (this._refs === 1) {
       this._handler._onPruning(this, false)
       this._subscribed =
-        this._subscribed || connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this._name])
+        this._subscribed || connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this._name)
     }
     return this
   }
@@ -324,7 +324,7 @@ class Record {
 
     if (connected) {
       this._subscribed =
-        this._refs > 0 && connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, [this._name])
+        this._refs > 0 && connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.SUBSCRIBE, this._name)
 
       if (this._updating) {
         for (const update of this._updating.values()) {
@@ -349,7 +349,7 @@ class Record {
     invariant(!this._updating, 'must not have updates')
 
     if (this._subscribed) {
-      connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UNSUBSCRIBE, [this._name])
+      connection.sendMsg1(C.TOPIC.RECORD, C.ACTIONS.UNSUBSCRIBE, this._name)
       this._subscribed = false
     }
 
@@ -572,4 +572,4 @@ Object.defineProperty(Record.prototype, 'hasProvider', {
   },
 })
 
-export default Record
+module.exports = Record

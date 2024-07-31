@@ -1,12 +1,10 @@
-import * as C from '../constants/constants.js'
+const C = require('../constants/constants')
 
-const actions = {}
-
-for (const key in C.ACTIONS) {
-  actions[C.ACTIONS[key]] = key
+const MessageParser = function () {
+  this._actions = this._getActions()
 }
 
-export function convertTyped(value, client) {
+MessageParser.prototype.convertTyped = function (value, client) {
   const type = value.charAt(0)
 
   if (type === C.TYPES.STRING) {
@@ -47,7 +45,17 @@ export function convertTyped(value, client) {
   return undefined
 }
 
-export function parseMessage(message, client, result) {
+MessageParser.prototype._getActions = function () {
+  const actions = {}
+
+  for (const key in C.ACTIONS) {
+    actions[C.ACTIONS[key]] = key
+  }
+
+  return actions
+}
+
+MessageParser.prototype.parseMessage = function (message, client, result) {
   const parts = message.split(C.MESSAGE_PART_SEPERATOR)
 
   if (parts.length < 2) {
@@ -64,7 +72,7 @@ export function parseMessage(message, client, result) {
     return null
   }
 
-  if (actions[parts[1]] === undefined) {
+  if (this._actions[parts[1]] === undefined) {
     client._$onError(
       C.TOPIC.ERROR,
       C.EVENT.MESSAGE_PARSE_ERROR,
@@ -79,3 +87,5 @@ export function parseMessage(message, client, result) {
   result.action = parts[1]
   result.data = parts.splice(2)
 }
+
+module.exports = new MessageParser()

@@ -1,8 +1,7 @@
-import * as rxjs from 'rxjs'
-import * as C from '../constants/constants.js'
-import { h64ToString } from '../utils/utils.js'
+const C = require('../constants/constants')
+const rxjs = require('rxjs')
 
-export default class Listener {
+class Listener {
   constructor(topic, pattern, callback, handler, { recursive = false, stringify = null } = {}) {
     this._topic = topic
     this._pattern = pattern
@@ -152,7 +151,7 @@ export default class Listener {
             }
 
             const body = typeof value !== 'string' ? this._stringify(value) : value
-            const hash = h64ToString(body)
+            const hash = this._connection.hasher.h64ToString(body)
             const version = `INF-${hash}`
 
             if (provider.version !== version) {
@@ -229,3 +228,5 @@ export default class Listener {
     this._subscriptions.clear()
   }
 }
+
+module.exports = Listener

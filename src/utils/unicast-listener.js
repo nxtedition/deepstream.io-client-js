@@ -1,9 +1,9 @@
-import * as rxjs from 'rxjs'
-import * as C from '../constants/constants.js'
-import { h64ToString } from '../utils/utils.js'
+const C = require('../constants/constants')
+const rx = require('rxjs/operators')
+const rxjs = require('rxjs')
 
 const PIPE = rxjs.pipe(
-  rxjs.map((value) => {
+  rx.map((value) => {
     let data
     if (value && typeof value === 'string') {
       if (value.charAt(0) !== '{' && value.charAt(0) !== '[') {
@@ -18,10 +18,10 @@ const PIPE = rxjs.pipe(
 
     return data
   }),
-  rxjs.distinctUntilChanged(),
+  rx.distinctUntilChanged(),
 )
 
-export default class Listener {
+class Listener {
   constructor(topic, pattern, callback, handler, opts) {
     if (opts.recursive) {
       throw new Error('invalid argument: recursive')
@@ -76,7 +76,7 @@ export default class Listener {
               this._subscriptions.delete(name)
               subscription.unsubscribe()
             } else {
-              const version = `INF-${h64ToString(data)}`
+              const version = `INF-${this._connection.hasher.h64ToString(data)}`
               this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
             }
           },
@@ -126,3 +126,5 @@ export default class Listener {
     this._connection.sendMsg(this._topic, C.ACTIONS.UNLISTEN, [this._pattern])
   }
 }
+
+module.exports = Listener

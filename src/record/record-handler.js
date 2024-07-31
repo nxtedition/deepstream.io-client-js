@@ -1,14 +1,15 @@
-import Record from './record.js'
-import MulticastListener from '../utils/multicast-listener.js'
-import UnicastListener from '../utils/unicast-listener.js'
-import * as C from '../constants/constants.js'
-import * as rxjs from 'rxjs'
-import invariant from 'invariant'
-import EventEmitter from 'component-emitter2'
-import jsonPath from '@nxtedition/json-path'
-import * as utils from '../utils/utils.js'
-import xuid from 'xuid'
-import * as timers from '../utils/timers.js'
+const Record = require('./record')
+const MulticastListener = require('../utils/multicast-listener')
+const UnicastListener = require('../utils/unicast-listener')
+const C = require('../constants/constants')
+const rxjs = require('rxjs')
+const invariant = require('invariant')
+const EventEmitter = require('component-emitter2')
+const jsonPath = require('@nxtedition/json-path')
+const utils = require('../utils/utils')
+const rx = require('rxjs/operators')
+const xuid = require('xuid')
+const timers = require('../utils/timers')
 
 const kEmpty = Symbol('kEmpty')
 
@@ -385,7 +386,7 @@ class RecordHandler {
           queue[n](queue[n + 1])
         }
       })
-      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token, 'WEAK'])
+      this._connection.sendMsg2(C.TOPIC.RECORD, C.ACTIONS.SYNC, token, 'WEAK')
     }, 1)
   }
 
@@ -471,7 +472,7 @@ class RecordHandler {
       // TODO (fix): Missing sync..
       return new Promise((resolve, reject) => {
         this.observe(...args)
-          .pipe(rxjs.first())
+          .pipe(rx.first())
           .subscribe({
             next: resolve,
             error: reject,
@@ -487,7 +488,7 @@ class RecordHandler {
   get2(...args) {
     return new Promise((resolve, reject) => {
       this.observe2(...args)
-        .pipe(rxjs.first())
+        .pipe(rx.first())
         .subscribe({
           next: resolve,
           error: reject,
@@ -662,4 +663,4 @@ class RecordHandler {
   }
 }
 
-export default RecordHandler
+module.exports = RecordHandler
