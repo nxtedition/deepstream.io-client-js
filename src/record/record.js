@@ -183,6 +183,26 @@ class Record {
     }
   }
 
+  put(name, version, data) {
+    const connection = this._handler._connection
+
+    if (typeof name !== 'string') {
+      throw new Error('invalid argument: name')
+    }
+
+    if (typeof version !== 'string' || !/^\d+-.+/.test(version)) {
+      throw new Error('invalid argument: version')
+    }
+
+    if (!utils.isPlainObject(data)) {
+      throw new Error('invalid argument: data')
+    }
+
+    connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, [name, version, jsonPath.stringify(data)])
+
+    this._onUpdate([name, version, jsonPath.stringify(data), 'F'])
+  }
+
   when(stateOrNil, optionsOrNil) {
     invariant(this._refs > 0, 'missing refs')
 

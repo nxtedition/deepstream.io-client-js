@@ -398,6 +398,15 @@ class RecordHandler {
     }
   }
 
+  put(name, ...args) {
+    const record = this.getRecord(name)
+    try {
+      return record.put(...args)
+    } finally {
+      record.unref()
+    }
+  }
+
   /**
    *
    * @param {*} name
