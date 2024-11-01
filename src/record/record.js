@@ -183,12 +183,8 @@ class Record {
     }
   }
 
-  put(name, version, data) {
+  put(version, data) {
     const connection = this._handler._connection
-
-    if (typeof name !== 'string') {
-      throw new Error('invalid argument: name')
-    }
 
     if (typeof version !== 'string' || !/^\d+-.+/.test(version)) {
       throw new Error('invalid argument: version')
@@ -198,9 +194,13 @@ class Record {
       throw new Error('invalid argument: data')
     }
 
-    connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, [name, version, jsonPath.stringify(data)])
+    connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, [
+      this._name,
+      version,
+      jsonPath.stringify(data),
+    ])
 
-    this._onUpdate([name, version, jsonPath.stringify(data), 'F'])
+    this._onUpdate([this._name, version, jsonPath.stringify(data), 'F'])
   }
 
   when(stateOrNil, optionsOrNil) {
