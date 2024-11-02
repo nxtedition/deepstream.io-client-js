@@ -100,6 +100,7 @@ class RecordHandler {
     this._pruning = new Set()
     this._patching = new Map()
     this._updating = new Map()
+    this._putting = new Set()
 
     this._connected = 0
     this._stats = {
@@ -398,13 +399,26 @@ class RecordHandler {
     }
   }
 
-  put(name, ...args) {
-    const record = this.getRecord(name)
-    try {
-      return record.put(...args)
-    } finally {
-      record.unref()
+  put(name, version, data) {
+    if (typeof name !== 'string' || name.startsWith('_')) {
+      throw new Error('invalid argument: name')
     }
+
+    if (typeof version !== 'string' || !/^\d+-/.test(version)) {
+      throw new Error('invalid argument: verison')
+    }
+
+    if (typeof data !== 'object' && data != null) {
+      throw new Error('invalid argument: data')
+    }
+
+    const update = [name, version, jsonPath.stringify(data)]
+    this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
+
+    this._putting.add(update)
+    this._sync((update) => {
+      this._putting.delete(update)
+    }, update)
   }
 
   /**
@@ -664,6 +678,10 @@ class RecordHandler {
       this._connected = Date.now()
       for (const token of this._syncEmitter.eventNames()) {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
+      }
+
+      for (const update of this._putting) {
+        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
       }
     } else {
       this._connected = 0
