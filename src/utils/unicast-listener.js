@@ -18,6 +18,7 @@ const PIPE = rxjs.pipe(
 
     return data
   }),
+  rxjs.takeWhile((data) => data != null),
   rxjs.distinctUntilChanged(),
 )
 
@@ -71,21 +72,22 @@ export default class Listener {
       if (value$) {
         const subscription = value$.pipe(PIPE).subscribe({
           next: (data) => {
-            if (data == null) {
-              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
-              this._subscriptions.delete(name)
-              subscription.unsubscribe()
-            } else {
-              const version = `INF-${h64ToString(data)}`
-              this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
-            }
+            const version = `INF-${h64ToString(data)}`
+            this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
+          },
+          complete: () => {
+            this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
           },
           error: (err) => {
             this._error(name, err)
             this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
-            this._subscriptions.delete(name)
           },
         })
+
+        subscription.add(() => {
+          this._subscriptions.delete(name)
+        })
+
         this._subscriptions.set(name, subscription)
       } else {
         this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
