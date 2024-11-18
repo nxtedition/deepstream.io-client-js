@@ -84,11 +84,11 @@ export default class Listener {
           },
         })
 
+        this._subscriptions.set(name, subscription)
+
         subscription.add(() => {
           this._subscriptions.delete(name)
         })
-
-        this._subscriptions.set(name, subscription)
       } else {
         this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
       }
