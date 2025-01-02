@@ -1,6 +1,14 @@
-import type { Observable } from 'rxjs'
+import Record from './record/record.js'
+import RecordHandler, { RecordStats } from './record/record-handler.js'
+import EventHandler, { EventStats } from './event/event-handler.js'
+import RpcHandler, { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
-export default function <Records>(url: string, options?: unknown): DeepstreamClient<Records>
+export default function <Records, Methods>(
+  url: string,
+  options?: unknown,
+): DeepstreamClient<Records, Methods>
+
+export type { Record, RecordHandler, EventHandler, RpcHandler }
 
 type RecordStateConstants = Readonly<{
   VOID: 0
@@ -56,16 +64,25 @@ type EventConstants = Readonly<{
 type EventKey = keyof typeof EventConstants
 type EventName = (typeof EventConstants)[EventKey]
 
-export interface DeepstreamClient<Records = Record<string, unknown>> {
+export interface DeepstreamClient<
+  Records = Record<string, unknown>,
+  Methods = Record<string, RpcMethodDef>,
+> {
   nuid: () => string
-  event: unknown
-  rpc: unknown
-  record: DeepstreamRecordHandler<Records>
-  user: unknown
-  nxt?: unknown
+  event: EventHandler
+  rpc: RpcHandler<Methods>
+  record: RecordHandler<Records>
+  user: string | null
   on: (evt: EventName, callback: (...args: unknown[]) => void) => void
   off: (evt: EventName, callback: (...args: unknown[]) => void) => void
   getConnectionState: () => ConnectionStateName
+  close: () => void
+  login: unknown
+  stats: {
+    record: RecordStats
+    rpc: RpcStats
+    event: EventStats
+  }
 
   isSameOrNewer(a: string, b: string): boolean
 
@@ -76,16 +93,6 @@ export interface DeepstreamClient<Records = Record<string, unknown>> {
   }
 }
 
-export interface RecordStats {
-  updating: number
-  created: number
-  destroyed: number
-  records: number
-  pruning: number
-  patching: number
-  subscriptions: number
-}
-
 export interface ProvideOptions {
   recursive?: boolean
   stringify?: ((input: unknown) => string) | null
@@ -94,139 +101,4 @@ export interface ProvideOptions {
 export interface SyncOptions {
   signal?: AbortSignal
   timeout?: number
-}
-
-type Paths<T> = keyof T | string
-type Get<Data, Path extends string> = Path extends keyof Data ? Data[Path] : unknown
-
-export interface DeepstreamRecordHandler<Records> {
-  VOID: RecordStateConstants['VOID']
-  CLIENT: RecordStateConstants['CLIENT']
-  PROVIDER: RecordStateConstants['PROVIDER']
-  SERVER: RecordStateConstants['SERVER']
-  STALE: RecordStateConstants['STALE']
-
-  connected: boolean
-  stats: RecordStats
-  getRecord: <Name extends keyof Records>(name: Name) => Records[Name]
-
-  provide: <Data>(
-    pattern: string,
-    callback: (key: string) => Data,
-    optionsOrRecursive?: ProvideOptions | boolean,
-  ) => void | (() => void)
-
-  sync: (options: SyncOptions) => Promise<void>
-
-  set: {
-    // without path:
-    <Name extends keyof Records>(name: Name, data: Records[Name]): void
-
-    // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data>>(
-      name: Name,
-      path: Path,
-      data: Get<Data, Path>,
-    ): void
-  }
-
-  update: {
-    // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-      updater: (data: Data) => Data,
-    ): Promise<void>
-
-    // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data>>(
-      name: Name,
-      path: Path,
-      updater: (data: Get<Data, Path>) => Get<Data, Path>,
-    ): Promise<void>
-  }
-
-  observe: {
-    // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(name: Name): Observable<Data>
-
-    // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
-      name: Name,
-      path: Path,
-    ): Observable<Get<Data, Path>>
-
-    // with state:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-      state: RecordStateConstants,
-    ): Observable<Data>
-
-    // with path and state:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
-      name: Name,
-      path: Path,
-      state: number,
-    ): Observable<Get<Data, Path>>
-  }
-
-  get: {
-    // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-      state?: number,
-    ): Promise<Data>
-
-    // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
-      name: Name,
-      path?: Path,
-      state?: number,
-    ): Promise<Get<Data, Path>>
-  }
-
-  observe2: {
-    // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-    ): Observable<{
-      name: Name
-      version: string
-      state: number
-      data: Data
-    }>
-
-    // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
-      name: Name,
-      path: Path,
-    ): Observable<{
-      name: Name
-      version: Get<Data, Path>
-      state: number
-      data: Data
-    }>
-
-    // with state:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-      state: RecordStateConstants,
-    ): Observable<{
-      name: Name
-      version: Get<Data, Path>
-      state: number
-      data: Data
-    }>
-
-    // with path and state:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
-      name: Name,
-      path: Path,
-      state: number,
-    ): Observable<{
-      name: Name
-      version: Get<Data, Path>
-      state: number
-      data: Get<Data, Path>
-    }>
-  }
 }
