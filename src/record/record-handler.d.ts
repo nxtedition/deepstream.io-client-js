@@ -5,11 +5,11 @@ type Paths<T> = keyof T
 type Get<Data, Path extends string> = Path extends keyof Data ? Data[Path] : unknown
 
 export default class RecordHandler<Records> {
-  VOID: RecordStateConstants['VOID']
-  CLIENT: RecordStateConstants['CLIENT']
-  PROVIDER: RecordStateConstants['PROVIDER']
-  SERVER: RecordStateConstants['SERVER']
-  STALE: RecordStateConstants['STALE']
+  VOID: 0
+  CLIENT: 1
+  SERVER: 2
+  STALE: 3
+  PROVIDER: 4
 
   JSON: {
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -73,7 +73,7 @@ export default class RecordHandler<Records> {
     // with state:
     <Name extends keyof Records, Data extends Records[Name]>(
       name: Name,
-      state: RecordStateConstants,
+      state: number,
     ): Observable<Data>
 
     // with path and state:
@@ -124,7 +124,7 @@ export default class RecordHandler<Records> {
     // with state:
     <Name extends keyof Records, Data extends Records[Name]>(
       name: Name,
-      state: RecordStateConstants,
+      state: number,
     ): Observable<{
       name: Name
       version: Get<Data, Path>
