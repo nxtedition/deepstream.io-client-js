@@ -1,7 +1,7 @@
-import Record from './record/record.js'
-import RecordHandler, { RecordStats } from './record/record-handler.js'
-import EventHandler, { EventStats } from './event/event-handler.js'
-import RpcHandler, { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
+import type Record from './record/record.js'
+import type RecordHandler, { RecordStats } from './record/record-handler.js'
+import type EventHandler, { EventStats } from './event/event-handler.js'
+import type RpcHandler, { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
 export default function <Records, Methods>(
   url: string,

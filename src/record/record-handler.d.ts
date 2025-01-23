@@ -1,5 +1,5 @@
 import type { Observable } from 'rxjs'
-import Record from './record.js'
+import type Record, { EmptyObject, GettablePossibleEmpty, SettablePossibleEmpty } from './record.js'
 
 type Paths<T> = keyof T
 type Get<Data, Path extends string> = Path extends keyof Data ? Data[Path] : unknown
@@ -12,15 +12,14 @@ export default class RecordHandler<Records> {
   PROVIDER: 4
 
   JSON: {
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    EMPTY: Readonly<{}>
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    EMPTY_OBJ: Readonly<{}>
+    EMPTY: EmptyObject
+    EMPTY_OBJ: EmptyObject
     EMPTY_ARR: Readonly<unknown[]>
   }
 
   connected: boolean
   stats: RecordStats
+
   getRecord: <Name extends keyof Records, Data extends Records[Name] = Records[Name]>(
     name: Name,
   ) => Record<Data>
@@ -35,7 +34,7 @@ export default class RecordHandler<Records> {
 
   set: {
     // without path:
-    <Name extends keyof Records>(name: Name, data: Records[Name]): void
+    <Name extends keyof Records>(name: Name, data: SettablePossibleEmpty<Records[Name]>): void
 
     // with path:
     <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data>>(
@@ -49,39 +48,41 @@ export default class RecordHandler<Records> {
     // without path:
     <Name extends keyof Records, Data extends Records[Name]>(
       name: Name,
-      updater: (data: Data) => Data,
+      updater: (data: Readonly<GettablePossibleEmpty<Data>>) => SettablePossibleEmpty<Data>,
     ): Promise<void>
 
     // with path:
     <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data>>(
       name: Name,
       path: Path,
-      updater: (data: Get<Data, Path>) => Get<Data, Path>,
+      updater: (data: Readonly<Get<Data, Path>> | undefined) => Get<Data, Path>,
     ): Promise<void>
   }
 
   observe: {
     // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(name: Name): Observable<Data>
+    <Name extends keyof Records, Data extends Records[Name]>(
+      name: Name,
+    ): Observable<GettablePossibleEmpty<Data>>
 
     // with path:
     <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
       name: Name,
       path: Path,
-    ): Observable<Get<Data, Path>>
+    ): Observable<Get<Data, Path> | undefined>
 
     // with state:
     <Name extends keyof Records, Data extends Records[Name]>(
       name: Name,
       state: number,
-    ): Observable<Data>
+    ): Observable<GettablePossibleEmpty<Data>>
 
     // with path and state:
     <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
       name: Name,
       path: Path,
       state: number,
-    ): Observable<Get<Data, Path>>
+    ): Observable<Get<Data, Path> | undefined>
   }
 
   get: {
@@ -89,14 +90,14 @@ export default class RecordHandler<Records> {
     <Name extends keyof Records, Data extends Records[Name]>(
       name: Name,
       state?: number,
-    ): Promise<Data>
+    ): Promise<GettablePossibleEmpty<Data>>
 
     // with path:
     <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
       name: Name,
       path?: Path,
       state?: number,
-    ): Promise<Get<Data, Path>>
+    ): Promise<Get<Data, Path> | undefined>
   }
 
   observe2: {
@@ -107,7 +108,7 @@ export default class RecordHandler<Records> {
       name: Name
       version: string
       state: number
-      data: Data
+      data: GettablePossibleEmpty<Data>
     }>
 
     // with path:
@@ -116,9 +117,9 @@ export default class RecordHandler<Records> {
       path: Path,
     ): Observable<{
       name: Name
-      version: Get<Data, Path>
+      version: string
       state: number
-      data: Data
+      data: Get<Data, Path> | undefined
     }>
 
     // with state:
@@ -127,9 +128,9 @@ export default class RecordHandler<Records> {
       state: number,
     ): Observable<{
       name: Name
-      version: Get<Data, Path>
+      version: string
       state: number
-      data: Data
+      data: GettablePossibleEmpty<Data>
     }>
 
     // with path and state:
@@ -139,9 +140,9 @@ export default class RecordHandler<Records> {
       state: number,
     ): Observable<{
       name: Name
-      version: Get<Data, Path>
+      version: string
       state: number
-      data: Get<Data, Path>
+      data: Get<Data, Path> | undefined
     }>
   }
 }
