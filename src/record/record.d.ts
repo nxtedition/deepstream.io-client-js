@@ -4,7 +4,6 @@ type Paths<T> = keyof T
 type Get<Data, Path extends string> = Path extends keyof Data ? Data[Path] : unknown
 
 export interface WhenOptions {
-  state?: number
   timeout?: number
   signal?: AbortSignal
 }
