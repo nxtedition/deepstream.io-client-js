@@ -9,7 +9,7 @@ export default class EventHandler {
   once: (name: string, callback: () => void) => this
   off: (name: string, callback: () => void) => this
   observe: <Data>(name: string) => Observable<Data>
-  emit: <Data>(name: string, data: Data) => void
+  emit: <Data>(name: string, data?: Data) => void
   provide: (pattern: string, callback: (name: string) => void, options: unknown) => () => void
 }
 
