@@ -1,5 +1,5 @@
 import * as C from '../constants/constants.js'
-import { h64ToString } from '../utils/utils.js'
+import { h64ToString, findBigIntPaths } from '../utils/utils.js'
 
 class Observer {
   #name
@@ -15,15 +15,22 @@ class Observer {
 
   next(value) {
     let data
-    if (value && typeof value === 'string') {
+    if (value == null) {
+      // Do nothing...
+    } else if (typeof value === 'string') {
       if (value.charAt(0) !== '{' && value.charAt(0) !== '[') {
         throw new Error(`invalid value: ${value}`)
       }
       data = value
-    } else if (value && typeof value === 'object') {
-      data = JSON.stringify(value)
-    } else if (data != null) {
-      throw new Error(`invalid value: ${value}`)
+    } else if (typeof value === 'object') {
+      try {
+        data = JSON.stringify(value)
+      } catch (err) {
+        const bigIntPaths = /BigInt/.test(err.message) ? findBigIntPaths(value) : undefined
+        throw Object.assign(new Error(`invalid value: ${value}`), { cause: err, data: { name: this.#name, bigIntPaths }})
+      }
+    } else {
+      throw Object.assign(new Error(`invalid value: ${value}`), { data: { name: this.#name }})
     }
 
     const version = data ? `INF-${h64ToString(data)}` : ''

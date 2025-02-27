@@ -182,3 +182,19 @@ const HASHER = await xxhash()
 export function h64ToString(str) {
   return HASHER.h64ToString(str)
 }
+
+export function findBigIntPaths(obj, path = "") {
+  const paths = []
+
+  if (typeof obj === "bigint") {
+    return [path]
+  }
+
+  if (typeof obj === "object" && obj !== null) {
+    for (const key of Object.keys(obj)) {
+      paths.push(...findBigIntPaths(obj[key], path ? `${path}.${key}` : key))
+    }
+  }
+
+  return paths
+}
