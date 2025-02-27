@@ -1,6 +1,6 @@
 import * as rxjs from 'rxjs'
 import * as C from '../constants/constants.js'
-import { h64ToString } from '../utils/utils.js'
+import { h64ToString, findBigIntPaths } from '../utils/utils.js'
 
 export default class Listener {
   constructor(topic, pattern, callback, handler, { recursive = false, stringify = null } = {}) {
@@ -151,7 +151,16 @@ export default class Listener {
               return
             }
 
-            const body = typeof value !== 'string' ? this._stringify(value) : value
+            if (typeof value !== 'string') {
+              try {
+                value = this._stringify(value)
+              } catch (err) {
+                const bigIntPaths = /BigInt/.test(err.message) ? findBigIntPaths(value) : undefined
+                throw Object.assign(new Error(`invalid value: ${value}`), { cause: err, data: { name: provider.name, bigIntPaths }})
+              }
+            }
+
+            const body = value
             const hash = h64ToString(body)
             const version = `INF-${hash}`
 

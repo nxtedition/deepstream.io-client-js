@@ -1,22 +1,26 @@
 import * as rxjs from 'rxjs'
 import * as C from '../constants/constants.js'
-import { h64ToString } from '../utils/utils.js'
+import { h64ToString, findBigIntPaths } from '../utils/utils.js'
 
 const PIPE = rxjs.pipe(
   rxjs.map((value) => {
-    let data
-    if (value && typeof value === 'string') {
+    if (value == null) {
+      return null
+    } else if (typeof value === 'string') {
       if (value.charAt(0) !== '{' && value.charAt(0) !== '[') {
         throw new Error(`invalid value: ${value}`)
       }
-      data = value
-    } else if (value && typeof value === 'object') {
-      data = JSON.stringify(value)
-    } else if (data != null) {
+      return value
+    } else if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value)
+      } catch (err) {
+        const bigIntPaths = /BigInt/.test(err.message) ? findBigIntPaths(value) : undefined
+        throw Object.assign(new Error(`invalid value: ${value}`), { cause: err, data: { bigIntPaths }})
+      }
+    } else {
       throw new Error(`invalid value: ${value}`)
     }
-
-    return data
   }),
   rxjs.takeWhile((data) => data != null),
   rxjs.distinctUntilChanged(),
