@@ -156,7 +156,13 @@ export default class Listener {
                 value = this._stringify(value)
               } catch (err) {
                 const bigIntPaths = /BigInt/.test(err.message) ? findBigIntPaths(value) : undefined
-                throw Object.assign(new Error(`invalid value: ${value}`), { cause: err, data: { name: provider.name, bigIntPaths }})
+                this._error(
+                  Object.assign(new Error(`invalid value: ${value}`), {
+                    cause: err,
+                    data: { name: provider.name, bigIntPaths },
+                  }),
+                )
+                return
               }
             }
 
