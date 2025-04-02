@@ -16,13 +16,15 @@ const PIPE = rxjs.pipe(
         return JSON.stringify(value)
       } catch (err) {
         const bigIntPaths = /BigInt/.test(err.message) ? findBigIntPaths(value) : undefined
-        throw Object.assign(new Error(`invalid value: ${value}`), { cause: err, data: { bigIntPaths }})
+        throw Object.assign(new Error(`invalid value: ${value}`), {
+          cause: err,
+          data: { bigIntPaths },
+        })
       }
     } else {
       throw new Error(`invalid value: ${value}`)
     }
   }),
-  rxjs.takeWhile((data) => data != null),
   rxjs.distinctUntilChanged(),
 )
 
@@ -76,11 +78,12 @@ export default class Listener {
       if (value$) {
         const subscription = value$.pipe(PIPE).subscribe({
           next: (data) => {
-            const version = `INF-${h64ToString(data)}`
-            this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
-          },
-          complete: () => {
-            this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
+            if (data == null) {
+              const version = `INF-${h64ToString(data)}`
+              this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
+            } else {
+              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
+            }
           },
           error: (err) => {
             this._error(name, err)
