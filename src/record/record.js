@@ -298,7 +298,7 @@ class Record {
       .then(() => {
         const prev = this.get(path)
         const next = updater(prev, this._version)
-        if (prev !== next) {
+        if (prev !== next && (path || next != null)) {
           this.set(path, next)
         }
       })
