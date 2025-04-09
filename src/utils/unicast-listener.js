@@ -78,7 +78,7 @@ export default class Listener {
       if (value$) {
         const subscription = value$.pipe(PIPE).subscribe({
           next: (data) => {
-            if (data == null) {
+            if (data != null) {
               const version = `INF-${h64ToString(data)}`
               this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
             } else {
