@@ -101,7 +101,6 @@ class RecordHandler {
     this._patching = new Map()
     this._updating = new Map()
     this._putting = new Set()
-    this._syncing = new Set()
 
     this._connected = 0
     this._stats = {
@@ -270,7 +269,7 @@ class RecordHandler {
     let onAbort
 
     const signal = opts?.signal
-    const timeout = opts?.timeout
+    const timeout = opts?.timeout || 2 * 60e3
 
     const signalPromise = signal
       ? new Promise((resolve, reject) => {
@@ -282,22 +281,10 @@ class RecordHandler {
       : Promise.resolve()
     signalPromise?.catch(() => {})
 
-    const sync = {
-      status: 'pending',
-      data: undefined,
-      timeout: timeout || 2 * 60e3,
-      timestamp: Date.now(),
-    }
-
-    this._syncing.add(sync)
     try {
       if (this._patching.size) {
         let patchingTimeout
         const patching = [...this._patching.values()]
-
-        sync.status = 'patching'
-        sync.data = patching
-        sync.timestamp = Date.now()
 
         await Promise.race([
           Promise.all(
@@ -308,12 +295,10 @@ class RecordHandler {
               this._client._$onError(
                 C.TOPIC.RECORD,
                 C.EVENT.TIMEOUT,
-                Object.assign(new Error('sync patching timeout'), {
-                  data: sync,
-                }),
+                new Error('sync patching timeout'),
               )
               resolve(null)
-            }, sync.timeout)
+            }, timeout)
           }),
           signalPromise,
         ]).finally(() => {
@@ -325,10 +310,6 @@ class RecordHandler {
         let updatingTimeout
         const updating = [...this._updating.values()]
 
-        sync.status = 'updating'
-        sync.data = updating
-        sync.timestamp = Date.now()
-
         await Promise.race([
           Promise.all(
             updating.map((callbacks) => new Promise((resolve) => callbacks.push(resolve))),
@@ -338,12 +319,10 @@ class RecordHandler {
               this._client._$onError(
                 C.TOPIC.RECORD,
                 C.EVENT.TIMEOUT,
-                Object.assign(new Error('sync updating timeout'), {
-                  data: sync,
-                }),
+                new Error('sync updating timeout'),
               )
               resolve(null)
-            }, sync.timeout)
+            }, timeout)
           }),
           signalPromise,
         ]).finally(() => {
@@ -353,10 +332,6 @@ class RecordHandler {
 
       let serverTimeout
       const token = xuid()
-
-      sync.status = 'token'
-      sync.data = token
-      sync.timestamp = Date.now()
 
       return await Promise.race([
         new Promise((resolve) => {
@@ -368,18 +343,16 @@ class RecordHandler {
             this._client._$onError(
               C.TOPIC.RECORD,
               C.EVENT.TIMEOUT,
-              Object.assign(new Error('sync server timeout'), { data: { token, timeout } }),
+              new Error('sync server timeout'),
             )
             resolve(null)
-          }, sync.timeout)
+          }, timeout)
         }),
         signalPromise,
       ]).finally(() => {
         timers.clearTimeout(serverTimeout)
       })
     } finally {
-      this._syncing.delete(sync)
-
       if (onAbort) {
         signal?.removeEventListener('abort', onAbort)
       }
