@@ -359,7 +359,7 @@ class RecordHandler {
       sync.timestamp = Date.now()
 
       return await Promise.race([
-        await new Promise((resolve) => {
+        new Promise((resolve) => {
           this._syncEmitter.once(token, resolve)
           this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
         }),
