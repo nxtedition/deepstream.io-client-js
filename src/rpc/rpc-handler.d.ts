@@ -14,12 +14,23 @@ export default class RpcHandler<Methods extends Record<string, RpcMethodDef>> {
   unprovide: <Name extends keyof Methods>(name: Name) => void
 
   make: {
-    <Name extends keyof Methods>(
+    <
+      Name extends keyof Methods | string,
+      Args extends Name extends keyof Methods ? Methods[Name][0] : unknown,
+      ReturnValue extends Name extends keyof Methods ? Methods[Name][1] : unknown,
+    >(
       name: Name,
-      args: Methods[Name][0],
-      callback: (error: unknown, response: Methods[Name][1]) => void,
+      args: Args,
+    ): Promise<ReturnValue>
+    <
+      Name extends keyof Methods | string,
+      Args extends Name extends keyof Methods ? Methods[Name][0] : unknown,
+      ReturnValue extends Name extends keyof Methods ? Methods[Name][1] : unknown,
+    >(
+      name: Name,
+      args: Args,
+      callback: (error: unknown, response: ReturnValue) => void,
     ): void
-    <Name extends keyof Methods>(name: Name, args: Methods[Name][0]): Promise<Methods[Name][1]>
   }
 }
 
