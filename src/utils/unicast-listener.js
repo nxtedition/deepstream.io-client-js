@@ -4,14 +4,12 @@ import { h64ToString, findBigIntPaths } from '../utils/utils.js'
 
 const PIPE = rxjs.pipe(
   rxjs.map((value) => {
-    if (value == null) {
-      return null
-    } else if (typeof value === 'string') {
+    if (typeof value === 'string') {
       if (value.charAt(0) !== '{' && value.charAt(0) !== '[') {
         throw new Error(`invalid value: ${value}`)
       }
       return value
-    } else if (typeof value === 'object') {
+    } else if (value != null && typeof value === 'object') {
       try {
         return JSON.stringify(value)
       } catch (err) {
@@ -78,24 +76,18 @@ export default class Listener {
       if (value$) {
         const subscription = value$.pipe(PIPE).subscribe({
           next: (data) => {
-            if (data != null) {
-              const version = `INF-${h64ToString(data)}`
-              this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
-            } else {
-              this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
-            }
+            const version = `INF-${h64ToString(data)}`
+            this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
           },
           error: (err) => {
             this._error(name, err)
+
+            this._subscriptions.delete(name)
             this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
           },
         })
 
         this._subscriptions.set(name, subscription)
-
-        subscription.add(() => {
-          this._subscriptions.delete(name)
-        })
       } else {
         this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
       }
