@@ -338,14 +338,9 @@ class RecordHandler {
           this._syncEmitter.once(token, resolve)
           this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
         }),
-        new Promise((resolve) => {
+        new Promise((resolve, reject) => {
           serverTimeout = timers.setTimeout(() => {
-            this._client._$onError(
-              C.TOPIC.RECORD,
-              C.EVENT.TIMEOUT,
-              new Error('sync server timeout'),
-            )
-            resolve(null)
+            reject(new Error('sync server timeout'))
           }, timeout)
         }),
         signalPromise,
