@@ -78,6 +78,10 @@ class Timeout {
   clear() {
     this.state = -1
   }
+
+  [Symbol.dispose]() {
+    this.state = -1
+  }
 }
 
 export function setTimeout(callback, delay, opaque) {

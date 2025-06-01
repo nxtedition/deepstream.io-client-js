@@ -265,91 +265,116 @@ class RecordHandler {
 
   async sync(opts) {
     // TODO (fix): Sync pending? What about VOID state?
-
-    let onAbort
+    // TODO (perf): Slow implementation...
 
     const signal = opts?.signal
-    const timeout = opts?.timeout || 2 * 60e3
+    const timeout = opts?.timeout ?? 2 * 60e3
 
-    const signalPromise = signal
-      ? new Promise((resolve, reject) => {
-          onAbort = () => {
-            reject(signal.reason ?? new utils.AbortError())
-          }
-          signal.addEventListener('abort', onAbort)
-        })
-      : Promise.resolve()
-    signalPromise?.catch(() => {})
-
+    const disposers = []
     try {
-      if (this._patching.size) {
-        let patchingTimeout
-        const patching = [...this._patching.values()]
+      const signalPromise = signal
+        ? new Promise((resolve, reject) => {
+            const onAbort = () => reject(signal.reason ?? new utils.AbortError())
+            signal.addEventListener('abort', onAbort)
+            disposers.push(() => signal.removeEventListener('abort', onAbort))
+          })
+        : null
 
-        await Promise.race([
-          Promise.all(
-            patching.map((callbacks) => new Promise((resolve) => callbacks.push(resolve))),
-          ),
-          new Promise((resolve) => {
-            patchingTimeout = timers.setTimeout(() => {
-              this._client._$onError(
-                C.TOPIC.RECORD,
-                C.EVENT.TIMEOUT,
-                new Error('sync patching timeout'),
-              )
-              resolve(null)
-            }, timeout)
-          }),
-          signalPromise,
-        ]).finally(() => {
-          timers.clearTimeout(patchingTimeout)
-        })
+      if (this._patching.size) {
+        const promises = []
+
+        {
+          const patchingPromises = []
+          for (const callbacks of this._patching.values()) {
+            patchingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
+          }
+          promises.push(patchingPromises)
+        }
+
+        if (timeout) {
+          promises.push(
+            new Promise((resolve) => {
+              const patchingTimeout = timers.setTimeout(() => {
+                this._client._$onError(
+                  C.TOPIC.RECORD,
+                  C.EVENT.TIMEOUT,
+                  new Error('sync patching timeout'),
+                )
+                resolve(null)
+              }, timeout)
+              disposers.push(() => timers.clearTimeout(patchingTimeout))
+            }),
+          )
+        }
+
+        if (signalPromise) {
+          promises.push(signalPromise)
+        }
+
+        await Promise.race(promises)
       }
 
       if (this._updating.size) {
-        let updatingTimeout
-        const updating = [...this._updating.values()]
+        const promises = []
 
-        await Promise.race([
-          Promise.all(
-            updating.map((callbacks) => new Promise((resolve) => callbacks.push(resolve))),
-          ),
-          new Promise((resolve) => {
-            updatingTimeout = timers.setTimeout(() => {
-              this._client._$onError(
-                C.TOPIC.RECORD,
-                C.EVENT.TIMEOUT,
-                new Error('sync updating timeout'),
-              )
-              resolve(null)
-            }, timeout)
-          }),
-          signalPromise,
-        ]).finally(() => {
-          timers.clearTimeout(updatingTimeout)
-        })
+        {
+          const updatingPromises = []
+          for (const callbacks of this._updating.values()) {
+            updatingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
+          }
+          promises.push(updatingPromises)
+        }
+
+        if (timeout) {
+          promises.push(
+            new Promise((resolve) => {
+              const updatingTimeout = timers.setTimeout(() => {
+                this._client._$onError(
+                  C.TOPIC.RECORD,
+                  C.EVENT.TIMEOUT,
+                  new Error('sync updating timeout'),
+                )
+                resolve(null)
+              }, timeout)
+              disposers.push(() => timers.clearTimeout(updatingTimeout))
+            }),
+          )
+        }
+
+        await Promise.race(promises)
       }
 
-      let serverTimeout
-      const token = xuid()
+      {
+        const promises = []
 
-      return await Promise.race([
-        new Promise((resolve) => {
-          this._syncEmitter.once(token, resolve)
-          this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
-        }),
-        new Promise((resolve, reject) => {
-          serverTimeout = timers.setTimeout(() => {
-            reject(new Error('sync server timeout'))
-          }, timeout)
-        }),
-        signalPromise,
-      ]).finally(() => {
-        timers.clearTimeout(serverTimeout)
-      })
+        promises.push(
+          new Promise((resolve) => {
+            const token = xuid()
+            this._syncEmitter.once(token, resolve)
+            this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
+          }),
+        )
+
+        if (timeout) {
+          promises.push(
+            new Promise((resolve, reject) => {
+              const serverTimeout = timers.setTimeout(() => {
+                reject(new Error('sync server timeout'))
+              }, timeout)
+              disposers.push(() => timers.clearTimeout(serverTimeout))
+            }),
+          )
+        }
+
+        if (signalPromise) {
+          promises.push(signalPromise)
+        }
+
+        await Promise.race(promises)
+      }
     } finally {
-      if (onAbort) {
-        signal?.removeEventListener('abort', onAbort)
+      for (const disposer of disposers) {
+        disposer()
       }
     }
   }
