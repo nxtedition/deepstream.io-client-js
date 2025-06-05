@@ -10,6 +10,8 @@ import * as utils from '../utils/utils.js'
 import xuid from 'xuid'
 import * as timers from '../utils/timers.js'
 
+function noop() {}
+
 const kEmpty = Symbol('kEmpty')
 
 function onUpdate(record, subscription) {
@@ -279,6 +281,8 @@ class RecordHandler {
             disposers.push(() => signal.removeEventListener('abort', onAbort))
           })
         : null
+
+      signalPromise?.catch(noop)
 
       if (this._patching.size) {
         const promises = []
