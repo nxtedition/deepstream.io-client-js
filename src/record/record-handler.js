@@ -102,7 +102,7 @@ class RecordHandler {
     this._pruning = new Set()
     this._patching = new Map()
     this._updating = new Map()
-    this._putting = new Set()
+    this._putting = new Map()
 
     this._connected = 0
     this._stats = {
@@ -284,6 +284,40 @@ class RecordHandler {
 
       signalPromise?.catch(noop)
 
+      if (this._putting.size) {
+        const promises = []
+
+        {
+          const puttingPromises = []
+          for (const callbacks of this._putting.values()) {
+            puttingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
+          }
+          promises.push(puttingPromises)
+        }
+
+        if (timeout) {
+          promises.push(
+            new Promise((resolve) => {
+              const patchingTimeout = timers.setTimeout(() => {
+                this._client._$onError(
+                  C.TOPIC.RECORD,
+                  C.EVENT.TIMEOUT,
+                  new Error('sync putting timeout'),
+                )
+                resolve(null)
+              }, timeout)
+              disposers.push(() => timers.clearTimeout(patchingTimeout))
+            }),
+          )
+        }
+
+        if (signalPromise) {
+          promises.push(signalPromise)
+        }
+
+        await Promise.race(promises)
+      }
+
       if (this._patching.size) {
         const promises = []
 
@@ -429,7 +463,7 @@ class RecordHandler {
     const update = [name, version, jsonPath.stringify(data)]
     this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
 
-    this._putting.add(update)
+    this._putting.set(update, [])
     this._sync((update) => {
       this._putting.delete(update)
     }, update)
@@ -694,7 +728,7 @@ class RecordHandler {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
       }
 
-      for (const update of this._putting) {
+      for (const update of this._putting.keys()) {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
       }
     } else {
