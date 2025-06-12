@@ -78,6 +78,10 @@ class Record {
     return this
   }
 
+  [Symbol.dispose]() {
+    this.unref()
+  }
+
   /**
    * @param {*} fn
    * @param {*} opaque

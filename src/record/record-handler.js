@@ -257,12 +257,15 @@ class RecordHandler {
     this._stats.listeners += 1
     this._listeners.set(pattern, listener)
 
-    return () => {
+    const disposer = () => {
       listener._$destroy()
 
       this._stats.listeners -= 1
       this._listeners.delete(pattern)
     }
+    disposer[Symbol.dispose] = disposer
+
+    return disposer
   }
 
   async sync(opts) {
