@@ -163,13 +163,16 @@ class RecordHandler {
   }
 
   _onUpdating(rec, value) {
+    const callbacks = this._updating.get(rec)
+
     if (value) {
+      invariant(!callbacks, 'updating callbacks must not exist')
       this._stats.updating += 1
       this._updating.set(rec, [])
     } else {
-      this._stats.updating -= 1
+      invariant(callbacks, 'updating callbacks must exist')
 
-      const callbacks = this._updating.get(rec)
+      this._stats.updating -= 1
       this._updating.delete(rec)
       for (const callback of callbacks) {
         callback()
