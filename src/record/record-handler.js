@@ -450,7 +450,7 @@ class RecordHandler {
     }
   }
 
-  put(name, version, data) {
+  put(name, version, data, parent) {
     if (typeof name !== 'string' || name.startsWith('_')) {
       throw new Error('invalid argument: name')
     }
@@ -463,7 +463,16 @@ class RecordHandler {
       throw new Error('invalid argument: data')
     }
 
+    if (parent != null && (typeof version !== 'string' || !/^\d+-/.test(version))) {
+      throw new Error('invalid argument: parent')
+    }
+
     const update = [name, version, jsonPath.stringify(data)]
+
+    if (parent) {
+      update.push(parent)
+    }
+
     this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
 
     this._putting.set(update, [])
