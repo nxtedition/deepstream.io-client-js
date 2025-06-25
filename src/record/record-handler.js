@@ -278,12 +278,13 @@ class RecordHandler {
     const signal = opts?.signal
     const timeout = opts?.timeout
 
-    const disposers = []
+    let disposers
     try {
       const signalPromise = signal
         ? new Promise((resolve, reject) => {
             const onAbort = () => reject(signal.reason ?? new utils.AbortError())
             signal.addEventListener('abort', onAbort)
+            disposers ??= []
             disposers.push(() => signal.removeEventListener('abort', onAbort))
           })
         : null
@@ -312,6 +313,7 @@ class RecordHandler {
                 )
                 resolve(null)
               }, timeout)
+              disposers ??= []
               disposers.push(() => timers.clearTimeout(patchingTimeout))
             }),
           )
@@ -346,6 +348,7 @@ class RecordHandler {
                 )
                 resolve(null)
               }, timeout)
+              disposers ??= []
               disposers.push(() => timers.clearTimeout(updatingTimeout))
             }),
           )
@@ -365,6 +368,7 @@ class RecordHandler {
               const serverTimeout = timers.setTimeout(() => {
                 reject(new Error('sync server timeout'))
               }, timeout)
+              disposers ??= []
               disposers.push(() => timers.clearTimeout(serverTimeout))
             }),
           )
@@ -377,8 +381,10 @@ class RecordHandler {
         await Promise.race(promises)
       }
     } finally {
-      for (const disposer of disposers) {
-        disposer()
+      if (disposers) {
+        for (const disposer of disposers) {
+          disposer()
+        }
       }
     }
   }
