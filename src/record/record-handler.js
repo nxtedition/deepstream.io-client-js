@@ -298,7 +298,7 @@ class RecordHandler {
           for (const callbacks of this._patching.values()) {
             patchingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
-          promises.push(patchingPromises)
+          promises.push(Promise.all(patchingPromises))
         }
 
         if (timeout) {
@@ -332,7 +332,7 @@ class RecordHandler {
           for (const callbacks of this._updating.values()) {
             updatingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
-          promises.push(updatingPromises)
+          promises.push(Promise.all(updatingPromises))
         }
 
         if (timeout) {
@@ -357,13 +357,7 @@ class RecordHandler {
       {
         const promises = []
 
-        promises.push(
-          new Promise((resolve) => {
-            const token = xuid()
-            this._syncEmitter.once(token, resolve)
-            this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
-          }),
-        )
+        promises.push(new Promise((resolve) => this._sync(resolve)))
 
         if (timeout) {
           promises.push(
@@ -389,7 +383,7 @@ class RecordHandler {
     }
   }
 
-  _sync(callback, opaque) {
+  _sync(callback, type, opaque) {
     this._syncQueue.push(callback, opaque)
 
     if (this._syncQueue.length > 2) {
@@ -406,7 +400,7 @@ class RecordHandler {
           queue[n](queue[n + 1])
         }
       })
-      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token, 'WEAK'])
+      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, type ? [token, type] : [token])
     }, 1)
   }
 
@@ -445,9 +439,7 @@ class RecordHandler {
     this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
 
     this._putting.set(update, [])
-    this._sync((update) => {
-      this._putting.delete(update)
-    }, update)
+    this._sync((update) => this._putting.delete(update), 'WEAK', update)
   }
 
   /**
@@ -514,7 +506,7 @@ class RecordHandler {
           rec.subscribe(onUpdateFast, opaque)
 
           if (!opaque.synced) {
-            this._sync(onSyncFast, opaque)
+            this._sync(onSyncFast, 'WEAK', opaque)
           }
         }
       })
