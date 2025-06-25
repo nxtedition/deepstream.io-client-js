@@ -290,40 +290,6 @@ class RecordHandler {
 
       signalPromise?.catch(noop)
 
-      if (this._putting.size) {
-        const promises = []
-
-        {
-          const puttingPromises = []
-          for (const callbacks of this._putting.values()) {
-            puttingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
-          }
-          promises.push(puttingPromises)
-        }
-
-        if (timeout) {
-          promises.push(
-            new Promise((resolve) => {
-              const patchingTimeout = timers.setTimeout(() => {
-                this._client._$onError(
-                  C.TOPIC.RECORD,
-                  C.EVENT.TIMEOUT,
-                  new Error('sync putting timeout'),
-                )
-                resolve(null)
-              }, timeout)
-              disposers.push(() => timers.clearTimeout(patchingTimeout))
-            }),
-          )
-        }
-
-        if (signalPromise) {
-          promises.push(signalPromise)
-        }
-
-        await Promise.race(promises)
-      }
-
       if (this._patching.size) {
         const promises = []
 
