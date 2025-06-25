@@ -292,13 +292,14 @@ class RecordHandler {
       signalPromise?.catch(noop)
 
       if (this._patching.size) {
-        const promises = []
+        let promises
 
         {
           const patchingPromises = []
           for (const callbacks of this._patching.values()) {
             patchingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
+          promises ??= []
           promises.push(Promise.all(patchingPromises))
         }
 
@@ -320,24 +321,29 @@ class RecordHandler {
         }
 
         if (signalPromise) {
+          promises ??= []
           promises.push(signalPromise)
         }
 
-        await Promise.race(promises)
+        if (promises) {
+          await Promise.race(promises)
+        }
       }
 
       if (this._updating.size) {
-        const promises = []
+        let promises
 
         {
           const updatingPromises = []
           for (const callbacks of this._updating.values()) {
             updatingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
+          promises ??= []
           promises.push(Promise.all(updatingPromises))
         }
 
         if (timeout) {
+          promises ??= []
           promises.push(
             new Promise((resolve) => {
               const updatingTimeout = timers.setTimeout(() => {
@@ -354,15 +360,18 @@ class RecordHandler {
           )
         }
 
-        await Promise.race(promises)
+        if (promises) {
+          await Promise.race(promises)
+        }
       }
 
       {
-        const promises = []
+        const syncPromise = new Promise((resolve) => this._sync(resolve))
 
-        promises.push(new Promise((resolve) => this._sync(resolve)))
+        let promises
 
         if (timeout) {
+          promises ??= []
           promises.push(
             new Promise((resolve, reject) => {
               const serverTimeout = timers.setTimeout(() => {
@@ -375,10 +384,16 @@ class RecordHandler {
         }
 
         if (signalPromise) {
+          promises ??= []
           promises.push(signalPromise)
         }
 
-        await Promise.race(promises)
+        if (promises) {
+          promises.push(syncPromise)
+          await Promise.race(promises)
+        } else {
+          await syncPromise
+        }
       }
     } finally {
       if (disposers) {
