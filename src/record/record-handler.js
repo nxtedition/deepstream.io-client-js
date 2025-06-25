@@ -739,12 +739,13 @@ class RecordHandler {
 
     if (connected) {
       this._connected = Date.now()
-      for (const token of this._syncEmitter.eventNames()) {
-        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
-      }
 
       for (const update of this._putting.keys()) {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
+      }
+
+      for (const token of this._syncEmitter.eventNames()) {
+        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
       }
     } else {
       this._connected = 0
