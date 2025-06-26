@@ -14,8 +14,40 @@ function noop() {}
 
 const kEmpty = Symbol('kEmpty')
 
+const OBSERVE_DEFAULTS = {
+  timeout: 2 * 60e3,
+  state: C.RECORD_STATE.SERVER,
+  dataOnly: true,
+}
+const OBSERVE2_DEFAULTS = {
+  timeout: 2 * 60e3,
+}
+const GET_DEFAULTS = {
+  timeout: 2 * 60e3,
+  first: true,
+  sync: true,
+  dataOnly: true,
+}
+const GET2_DEFAULTS = {
+  timeout: 2 * 60e3,
+  first: true,
+}
+
+function onSync(subscription) {
+  subscription.synced = true
+  onUpdate(null, subscription)
+}
+
 function onUpdate(record, subscription) {
-  if (subscription.state && record.state < subscription.state) {
+  if (!subscription.record) {
+    return
+  }
+
+  if (!subscription.synced) {
+    return
+  }
+
+  if (subscription.state && subscription.record.state < subscription.state) {
     return
   }
 
@@ -24,7 +56,9 @@ function onUpdate(record, subscription) {
     subscription.timeout = null
   }
 
-  const data = subscription.path ? record.get(subscription.path) : record.data
+  const data = subscription.path
+    ? subscription.record.get(subscription.path)
+    : subscription.record.data
 
   if (subscription.dataOnly) {
     if (data !== subscription.data) {
@@ -33,11 +67,16 @@ function onUpdate(record, subscription) {
     }
   } else {
     subscription.subscriber.next({
-      name: record.name,
-      version: record.version,
-      state: record.state,
+      name: subscription.record.name,
+      version: subscription.record.version,
+      state: subscription.record.state,
       data,
     })
+  }
+
+  if (subscription.first) {
+    subscription.subscriber.complete?.()
+    subscription.unsubscribe()
   }
 }
 
@@ -53,39 +92,6 @@ function onTimeout(subscription) {
       },
     ),
   )
-}
-
-function onUpdateFast(rec, opaque) {
-  const { timeout, resolve, synced, state } = opaque
-
-  if (rec.state >= state && synced) {
-    timers.clearTimeout(timeout)
-    rec.unsubscribe(onUpdateFast, opaque)
-    rec.unref()
-    resolve(rec.data)
-  }
-}
-
-function onSyncFast(opaque) {
-  opaque.synced = true
-  onUpdateFast(opaque.rec, opaque)
-}
-
-function onTimeoutFast(opaque) {
-  const { rec, synced, resolve } = opaque
-  rec.unsubscribe(onUpdateFast, opaque)
-  rec.unref()
-
-  let err
-  if (rec.state < opaque.state) {
-    err = new Error(`timeout state: ${opaque.rec.name} [${opaque.rec.state}<${opaque.state}]`)
-  } else if (!synced) {
-    err = new Error(`timeout sync: ${opaque.rec.name} `)
-  } else {
-    err = new Error('timeout')
-  }
-
-  resolve(Promise.reject(Object.assign(err, { code: 'ETIMEDOUT' })))
 }
 
 class RecordHandler {
@@ -404,27 +410,6 @@ class RecordHandler {
     }
   }
 
-  _sync(callback, type, opaque) {
-    this._syncQueue.push(callback, opaque)
-
-    if (this._syncQueue.length > 2) {
-      return
-    }
-
-    setTimeout(() => {
-      // Token must be universally unique until deepstream properly separates
-      // sync requests from different sockets.
-      const token = xuid()
-      const queue = this._syncQueue.splice(0)
-      this._syncEmitter.once(token, () => {
-        for (let n = 0; n < queue.length; n += 2) {
-          queue[n](queue[n + 1])
-        }
-      })
-      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, type ? [token, type] : [token])
-    }, 1)
-  }
-
   set(name, ...args) {
     const record = this.getRecord(name)
     try {
@@ -487,14 +472,7 @@ class RecordHandler {
    * @returns {rxjs.Observable}
    */
   observe(...args) {
-    return this._observe(
-      {
-        state: C.RECORD_STATE.SERVER,
-        timeout: 2 * 60e3,
-        dataOnly: true,
-      },
-      ...args,
-    )
+    return this._observe(OBSERVE_DEFAULTS, ...args)
   }
 
   /**
@@ -502,47 +480,9 @@ class RecordHandler {
    * @returns {Promise}
    */
   get(...args) {
-    if (args.length === 1 || (args.length === 2 && typeof args[1] === 'number')) {
-      return new Promise((resolve) => {
-        const rec = this.getRecord(args[0])
-        const state = args.length === 2 ? args[1] : C.RECORD_STATE.SERVER
-        // TODO (perf): We could also skip sync if state is less than SERVER. However,
-        // there is a potential race where we receive an UPDATE for a previous SUBSCRIBE.
-        // Unsure how to avoid that. Keep it simple for now and always sync regardless of
-        // current state.
-        const synced = state < C.RECORD_STATE.SERVER
-
-        if (rec.state >= state && synced) {
-          rec.unref()
-          resolve(rec.data)
-        } else {
-          const opaque = {
-            rec,
-            state,
-            resolve,
-            timeout: null,
-            synced,
-          }
-          opaque.timeout = timers.setTimeout(onTimeoutFast, 2 * 60e3, opaque)
-          rec.subscribe(onUpdateFast, opaque)
-
-          if (!opaque.synced) {
-            this._sync(onSyncFast, 'WEAK', opaque)
-          }
-        }
-      })
-    } else {
-      // Slow path...
-      // TODO (fix): Missing sync..
-      return new Promise((resolve, reject) => {
-        this.observe(...args)
-          .pipe(rxjs.first())
-          .subscribe({
-            next: resolve,
-            error: reject,
-          })
-      })
-    }
+    return new Promise((resolve, reject) => {
+      this._subscribe({ next: resolve, error: reject }, GET_DEFAULTS, ...args)
+    })
   }
 
   /**
@@ -551,12 +491,7 @@ class RecordHandler {
    */
   get2(...args) {
     return new Promise((resolve, reject) => {
-      this.observe2(...args)
-        .pipe(rxjs.first())
-        .subscribe({
-          next: resolve,
-          error: reject,
-        })
+      this._subscribe({ next: resolve, error: reject }, GET2_DEFAULTS, ...args)
     })
   }
 
@@ -565,24 +500,29 @@ class RecordHandler {
    * @returns {rxjs.Observable<{ name: string, version: string, state: Number, data: any}>}
    */
   observe2(...args) {
-    return this._observe(
-      {
-        timeout: 2 * 60e3,
-      },
-      ...args,
-    )
+    return this._observe(OBSERVE2_DEFAULTS, ...args)
   }
 
   /**
    * @returns {rxjs.Observable}
    */
-  // TODO (perf): Avoid rest parameters.
   _observe(defaults, name, ...args) {
+    return new rxjs.Observable((subscriber) => {
+      this._subscribe(subscriber, defaults, name, ...args)
+    })
+  }
+
+  /**
+   * @returns {{ unsubscribe: Function }}
+   */
+  _subscribe(subscriber, defaults, name, ...args) {
     let path
-    let state = defaults ? defaults.state : undefined
+    let state = defaults?.state
     let signal
-    let timeout = defaults ? defaults.timeout : undefined
-    let dataOnly = defaults ? defaults.dataOnly : undefined
+    let timeout = defaults?.timeout
+    let dataOnly = defaults?.dataOnly
+    let sync = defaults?.sync
+    let first = defaults?.first
 
     let idx = 0
 
@@ -622,63 +562,82 @@ class RecordHandler {
       if (options.dataOnly !== undefined) {
         dataOnly = options.dataOnly
       }
+
+      if (options.sync !== undefined) {
+        sync = options.sync
+      }
+
+      if (options.first !== undefined) {
+        first = options.first
+      }
     }
 
     if (typeof state === 'string') {
       state = C.RECORD_STATE[state.toUpperCase()]
     }
 
-    // TODO (perf): Avoid subscribe closure allocation.
-    return new rxjs.Observable((subscriber) => {
-      const subscription = {
-        subscriber,
-        path,
-        state,
-        signal,
-        dataOnly,
-        data: kEmpty,
-        timeout: null,
-        /** @type {Record?} */ record: null,
-        /** @type {Function?} */ abort: null,
-        unsubscribe() {
-          if (this.timeout) {
-            timers.clearTimeout(this.timeout)
-            this.timeout = null
-          }
+    // TODO (perf): Make a class
+    const subscription = {
+      subscriber,
+      first,
+      path,
+      state,
+      synced: false,
+      signal,
+      dataOnly,
+      data: kEmpty,
+      /** @type {NodeJS.Timeout|Timeout|null} */
+      timeout: null,
+      /** @type {Record?} */
+      record: null,
+      /** @type {Function?} */
+      abort: null,
+      unsubscribe() {
+        if (this.timeout) {
+          timers.clearTimeout(this.timeout)
+          this.timeout = null
+        }
 
-          if (this.signal) {
-            utils.removeAbortListener(this.signal, this.abort)
-            this.signal = null
-            this.abort = null
-          }
+        if (this.signal) {
+          utils.removeAbortListener(this.signal, this.abort)
+          this.signal = null
+          this.abort = null
+        }
 
-          if (this.record) {
-            this.record.unsubscribe(onUpdate, this)
-            this.record.unref()
-            this.record = null
-          }
-        },
-      }
+        if (this.record) {
+          this.record.unsubscribe(onUpdate, this)
+          this.record.unref()
+          this.record = null
+        }
+      },
+    }
 
-      const record = (subscription.record = this.getRecord(name).subscribe(onUpdate, subscription))
+    subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
 
-      if (timeout > 0 && state && record.state < state) {
-        // TODO (perf): Avoid Timer allocation.
-        subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
-      }
+    const record = subscription.record
 
-      if (record.version) {
-        onUpdate(record, subscription)
-      }
+    if (sync && record.state >= C.RECORD_STATE.SERVER) {
+      this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
+    } else {
+      subscription.synced = true
+    }
 
-      if (signal) {
-        // TODO (perf): Avoid abort closure allocation.
-        subscription.abort = () => subscriber.error(new utils.AbortError())
-        utils.addAbortListener(signal, subscription.abort)
-      }
+    if (timeout > 0 && state && record.state < state) {
+      // TODO (perf): Avoid Timer allocation.
+      subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
+    }
 
-      return subscription
-    })
+    if (signal) {
+      // TODO (perf): Avoid abort closure allocation.
+      subscription.abort = () => subscriber.error(new utils.AbortError())
+      utils.addAbortListener(signal, subscription.abort)
+    }
+
+    if (record.version) {
+      onUpdate(null, subscription)
+    }
+
+    return subscription
   }
 
   _$handle(message) {
@@ -729,6 +688,35 @@ class RecordHandler {
     } else {
       this._connected = 0
     }
+  }
+
+  _sync(callback, type, opaque) {
+    this._syncQueue.push(callback, opaque)
+
+    if (this._syncQueue.length > 2) {
+      return
+    }
+
+    if (type == null) {
+      type = null
+    } else if (type === true) {
+      type = 'WEAK'
+    } else if (type !== 'WEAK' && type !== 'STRONG') {
+      throw new Error(`invalid sync type: ${type}`)
+    }
+
+    setTimeout(() => {
+      // Token must be universally unique until deepstream properly separates
+      // sync requests from different sockets.
+      const token = xuid()
+      const queue = this._syncQueue.splice(0)
+      this._syncEmitter.once(token, () => {
+        for (let n = 0; n < queue.length; n += 2) {
+          queue[n](queue[n + 1])
+        }
+      })
+      this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, type ? [token, type] : [token])
+    }, 1)
   }
 }
 
