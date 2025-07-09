@@ -377,6 +377,8 @@ class Record {
 
     const update = [this._name, nextVersion, jsonPath.stringify(nextData), prevVersion]
 
+    connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
+
     if (!this._updating) {
       this._onUpdating(true)
     }
@@ -386,8 +388,6 @@ class Record {
     } else {
       throw new Error('invalid state')
     }
-
-    connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.UPDATE, update)
 
     this._data = nextData
     this._version = nextVersion
