@@ -118,7 +118,10 @@ Connection.prototype.send = function (message) {
       C.TOPIC.CONNECTION,
       C.EVENT.CONNECTION_ERROR,
       err,
-      message.split(C.MESSAGE_PART_SEPERATOR).map((x) => x.slice(0, 256)),
+      message
+        .toString()
+        .split(C.MESSAGE_PART_SEPERATOR)
+        .map((x) => x.slice(0, 256)),
     )
     return false
   }
