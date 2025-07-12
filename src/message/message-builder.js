@@ -2,10 +2,10 @@ import * as C from '../constants/constants.js'
 import varint from 'varint'
 
 const SEP = C.MESSAGE_PART_SEPERATOR
-const MAX_MESSAGE_SIZE = 1024 * 1024
 
 let poolBuf
 let poolPos = 0
+let poolSize = 1024 * 1024
 
 export function getMsg(topic, action, data, binary) {
   if (data && !(data instanceof Array)) {
@@ -14,6 +14,7 @@ export function getMsg(topic, action, data, binary) {
 
   if (binary) {
     let headerSize = 0
+    let estimatedSize = 0
 
     // Estimate headerSize
     if (data) {
@@ -22,14 +23,18 @@ export function getMsg(topic, action, data, binary) {
         if (typeof data[n] !== 'string') {
           throw new Error(`invalid data[${n}]`)
         }
+        estimatedSize += data[n].length + 1 // +1 for the separator
         headerSize += varint.encodingLength(data[n].length)
       }
-      // Allow for some multi chars here and there...
+      // Allow extra space for some multi chars here and there...
       headerSize += 2
+
+      estimatedSize += headerSize + topic.length + action.length + 2 // +2 for the topic and action separators
+      estimatedSize += 32 // Allow for some extra space
     }
 
-    if (!poolBuf || poolBuf.byteLength - poolPos < MAX_MESSAGE_SIZE) {
-      poolBuf = Buffer.allocUnsafeSlow(8 * MAX_MESSAGE_SIZE)
+    if (!poolBuf || poolBuf.byteLength - poolPos < estimatedSize) {
+      poolBuf = Buffer.allocUnsafeSlow(poolSize)
       poolPos = 0
     }
 
@@ -72,6 +77,13 @@ export function getMsg(topic, action, data, binary) {
         poolBuf[dataPos++] = 31
         const len = poolBuf.write(data[i], dataPos)
         dataPos += len
+
+        if (dataPos >= poolPos + poolBuf.byteLength) {
+          poolSize *= poolPos === 0 ? 2 : 1
+          poolBuf = null
+          poolPos = 0
+          return getMsg(topic, action, data, binary)
+        }
 
         if (headerSize > 0) {
           const encodingLength = varint.encodingLength(len + 1)
