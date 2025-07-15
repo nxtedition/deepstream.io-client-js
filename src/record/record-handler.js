@@ -4,7 +4,6 @@ import UnicastListener from '../utils/unicast-listener.js'
 import * as C from '../constants/constants.js'
 import * as rxjs from 'rxjs'
 import invariant from 'invariant'
-import EventEmitter from 'component-emitter2'
 import jsonPath from '@nxtedition/json-path'
 import * as utils from '../utils/utils.js'
 import xuid from 'xuid'
@@ -121,8 +120,7 @@ class RecordHandler {
     }
 
     this._syncQueue = []
-    this._syncEmitter = new EventEmitter()
-    this._readyEmitter = new EventEmitter()
+    this._syncMap = {}
 
     this.set = this.set.bind(this)
     this.get = this.get.bind(this)
@@ -649,7 +647,23 @@ class RecordHandler {
     }
 
     if (message.action === C.ACTIONS.SYNC) {
-      this._syncEmitter.emit(message.data[0], message.data[1]?.toString())
+      const [token] = message.data
+      if (!token) {
+        return true
+      }
+
+      const sync = this._syncMap[token]
+      delete this._syncMap[token]
+
+      if (!sync) {
+        return true
+      }
+
+      const { queue } = sync
+      for (let n = 0; n < queue.length; n += 2) {
+        queue[n](queue[n + 1])
+      }
+
       return true
     }
 
@@ -682,9 +696,17 @@ class RecordHandler {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
       }
 
-      for (const token of this._syncEmitter.eventNames()) {
-        this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, [token])
+      const syncMap = {}
+      for (const sync of Object.values(this._syncMap)) {
+        const token = xuid()
+        syncMap[token] = sync
+        this._connection.sendMsg(
+          C.TOPIC.RECORD,
+          C.ACTIONS.SYNC,
+          sync.type ? [token, sync.type] : [token],
+        )
       }
+      this._syncMap = syncMap
     } else {
       this._connected = 0
     }
@@ -710,11 +732,8 @@ class RecordHandler {
       // sync requests from different sockets.
       const token = xuid()
       const queue = this._syncQueue.splice(0)
-      this._syncEmitter.once(token, () => {
-        for (let n = 0; n < queue.length; n += 2) {
-          queue[n](queue[n + 1])
-        }
-      })
+
+      this._syncMap[token] = { queue, type }
       this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, type ? [token, type] : [token])
     }, 1)
   }
