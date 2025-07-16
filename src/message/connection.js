@@ -236,7 +236,7 @@ Connection.prototype._onMessage = function (data) {
 Connection.prototype._recvMessages = function (deadline) {
   for (
     let n = 0;
-    deadline ? deadline.didTimeout || deadline.timeRemaining() : n < this._batchSize;
+    deadline ? deadline.didTimeout || deadline.timeRemaining() > 0 : n < this._batchSize;
     ++n
   ) {
     const message = this._recvQueue.shift()
