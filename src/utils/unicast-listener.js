@@ -62,7 +62,10 @@ export default class Listener {
 
     if (message.action === C.ACTIONS.LISTEN_ACCEPT) {
       if (this._subscriptions.has(name)) {
-        this._error(name, 'invalid accept: listener exists')
+        this._error(
+          name,
+          'invalid accept: listener exists (pattern:' + this._pattern + ' name:' + name + ')',
+        )
         return
       }
 
@@ -98,7 +101,10 @@ export default class Listener {
         this._subscriptions.delete(name)
         subscription.unsubscribe()
       } else {
-        this._error(name, 'invalid remove: listener missing')
+        this._error(
+          name,
+          'invalid remove: listener missing (pattern:' + this._pattern + ' name:' + name + ')',
+        )
       }
     } else {
       return false

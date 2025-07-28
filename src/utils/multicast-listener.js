@@ -205,7 +205,10 @@ export default class Listener {
       }
 
       if (provider.valueSubscription) {
-        this._error(name, 'invalid accept: listener started')
+        this._error(
+          name,
+          'invalid accept: listener started (pattern:' + this._pattern + ' name:' + name + ')',
+        )
       } else {
         // TODO (fix): provider.version = message.data[2]
         provider.valueSubscription = provider.value$.subscribe(provider.observer)
@@ -214,7 +217,10 @@ export default class Listener {
       const provider = this._subscriptions.get(name)
 
       if (!provider) {
-        this._error(name, 'invalid remove: listener missing')
+        this._error(
+          name,
+          'invalid remove: listener missing (pattern:' + this._pattern + ' name:' + name + ')',
+        )
       } else {
         provider.stop()
         this._subscriptions.delete(provider.name)
