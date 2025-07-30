@@ -76,7 +76,7 @@ Connection.prototype.authenticate = function (authParams, callback) {
 }
 
 Connection.prototype.sendMsg = function (topic, action, data) {
-  return this.send(messageBuilder.getMsg(topic, action, data, false /*utils.isNode*/))
+  return this.send(messageBuilder.getMsg(topic, action, data, utils.isNode))
 }
 
 Connection.prototype.close = function () {
