@@ -23,13 +23,12 @@ const OBSERVE2_DEFAULTS = {
 }
 const GET_DEFAULTS = {
   timeout: 2 * 60e3,
-  first: true,
   sync: true,
   dataOnly: true,
 }
 const GET2_DEFAULTS = {
   timeout: 2 * 60e3,
-  first: true,
+  sync: true,
 }
 
 function onSync(subscription) {
@@ -71,11 +70,6 @@ function onUpdate(record, subscription) {
       state: subscription.record.state,
       data,
     })
-  }
-
-  if (subscription.first) {
-    subscription.subscriber.complete?.()
-    subscription.unsubscribe()
   }
 }
 
@@ -475,26 +469,6 @@ class RecordHandler {
 
   /**
    * @param  {...any} args
-   * @returns {Promise}
-   */
-  get(...args) {
-    return new Promise((resolve, reject) => {
-      this._subscribe({ next: resolve, error: reject }, GET_DEFAULTS, ...args)
-    })
-  }
-
-  /**
-   * @param  {...any} args
-   * @returns {Promise}
-   */
-  get2(...args) {
-    return new Promise((resolve, reject) => {
-      this._subscribe({ next: resolve, error: reject }, GET2_DEFAULTS, ...args)
-    })
-  }
-
-  /**
-   * @param  {...any} args
    * @returns {rxjs.Observable<{ name: string, version: string, state: Number, data: any}>}
    */
   observe2(...args) {
@@ -502,138 +476,143 @@ class RecordHandler {
   }
 
   /**
-   * @returns {rxjs.Observable}
+   * @param  {...any} args
+   * @returns {Promise}
    */
-  _observe(defaults, name, ...args) {
-    return new rxjs.Observable((subscriber) => this._subscribe(subscriber, defaults, name, ...args))
+  get(...args) {
+    return rxjs.firstValueFrom(this._observe(GET_DEFAULTS, ...args))
   }
 
   /**
-   * @returns {{ unsubscribe: () => void }}
+   * @param  {...any} args
+   * @returns {Promise}
    */
-  _subscribe(subscriber, defaults, name, ...args) {
-    let path
-    let state = defaults?.state
-    let signal
-    let timeout = defaults?.timeout
-    let dataOnly = defaults?.dataOnly
-    let sync = defaults?.sync
-    let first = defaults?.first
+  get2(...args) {
+    return rxjs.firstValueFrom(this._observe(GET2_DEFAULTS, ...args))
+  }
 
-    let idx = 0
+  /**
+   * @returns {rxjs.Observable}
+   */
+  _observe(defaults, name, ...args) {
+    return new rxjs.Observable((subscriber) => {
+      let path
+      let state = defaults?.state
+      let signal
+      let timeout = defaults?.timeout
+      let dataOnly = defaults?.dataOnly
+      let sync = defaults?.sync
 
-    if (
-      idx < args.length &&
-      (args[idx] == null ||
-        typeof args[idx] === 'string' ||
-        Array.isArray(args[idx]) ||
-        typeof args[idx] === 'function')
-    ) {
-      path = args[idx++]
-    }
+      let idx = 0
 
-    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
-      state = args[idx++]
-    }
-
-    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
-      const options = args[idx++] || {}
-
-      if (options.signal !== undefined) {
-        signal = options.signal
+      if (
+        idx < args.length &&
+        (args[idx] == null ||
+          typeof args[idx] === 'string' ||
+          Array.isArray(args[idx]) ||
+          typeof args[idx] === 'function')
+      ) {
+        path = args[idx++]
       }
 
-      if (options.timeout !== undefined) {
-        timeout = options.timeout
+      if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
+        state = args[idx++]
       }
 
-      if (options.path !== undefined) {
-        path = options.path
-      }
+      if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
+        const options = args[idx++] || {}
 
-      if (options.state !== undefined) {
-        state = options.state
-      }
-
-      if (options.dataOnly !== undefined) {
-        dataOnly = options.dataOnly
-      }
-
-      if (options.sync !== undefined) {
-        sync = options.sync
-      }
-
-      if (options.first !== undefined) {
-        first = options.first
-      }
-    }
-
-    if (typeof state === 'string') {
-      state = C.RECORD_STATE[state.toUpperCase()]
-    }
-
-    // TODO (perf): Make a class
-    const subscription = {
-      subscriber,
-      first,
-      path,
-      state,
-      synced: false,
-      signal,
-      dataOnly,
-      data: kEmpty,
-      /** @type {NodeJS.Timeout|Timeout|null} */
-      timeout: null,
-      /** @type {Record?} */
-      record: null,
-      /** @type {Function?} */
-      abort: null,
-      unsubscribe() {
-        if (this.timeout) {
-          timers.clearTimeout(this.timeout)
-          this.timeout = null
+        if (options.signal !== undefined) {
+          signal = options.signal
         }
 
-        if (this.signal) {
-          utils.removeAbortListener(this.signal, this.abort)
-          this.signal = null
-          this.abort = null
+        if (options.timeout !== undefined) {
+          timeout = options.timeout
         }
 
-        if (this.record) {
-          this.record.unsubscribe(onUpdate, this)
-          this.record.unref()
-          this.record = null
+        if (options.path !== undefined) {
+          path = options.path
         }
-      },
-    }
 
-    subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
+        if (options.state !== undefined) {
+          state = options.state
+        }
 
-    const record = subscription.record
+        if (options.dataOnly !== undefined) {
+          dataOnly = options.dataOnly
+        }
 
-    if (sync && record.state >= C.RECORD_STATE.SERVER) {
-      this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
-    } else {
-      subscription.synced = true
-    }
+        if (options.sync !== undefined) {
+          sync = options.sync
+        }
+      }
 
-    if (timeout > 0 && state && record.state < state) {
-      // TODO (perf): Avoid Timer allocation.
-      subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
-    }
+      if (typeof state === 'string') {
+        state = C.RECORD_STATE[state.toUpperCase()]
+      }
 
-    if (signal) {
-      // TODO (perf): Avoid abort closure allocation.
-      subscription.abort = () => subscriber.error(new utils.AbortError())
-      utils.addAbortListener(signal, subscription.abort)
-    }
+      // TODO (perf): Make a class
+      const subscription = {
+        subscriber,
+        path,
+        state,
+        synced: false,
+        signal,
+        dataOnly,
+        data: kEmpty,
+        /** @type {NodeJS.Timeout|Timeout|null} */
+        timeout: null,
+        /** @type {Record?} */
+        record: null,
+        /** @type {Function?} */
+        abort: null,
+        unsubscribe() {
+          if (this.timeout) {
+            timers.clearTimeout(this.timeout)
+            this.timeout = null
+          }
 
-    if (record.version) {
-      onUpdate(null, subscription)
-    }
+          if (this.signal) {
+            utils.removeAbortListener(this.signal, this.abort)
+            this.signal = null
+            this.abort = null
+          }
 
-    return subscription
+          if (this.record) {
+            this.record.unsubscribe(onUpdate, this)
+            this.record.unref()
+            this.record = null
+          }
+        },
+      }
+
+      subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
+
+      const record = subscription.record
+
+      if (sync && record.state >= C.RECORD_STATE.SERVER) {
+        this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
+      } else {
+        subscription.synced = true
+      }
+
+      if (timeout > 0 && state && record.state < state) {
+        // TODO (perf): Avoid Timer allocation.
+        subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
+      }
+
+      if (signal) {
+        // TODO (perf): Avoid abort closure allocation.
+        subscription.abort = () => subscriber.error(new utils.AbortError())
+        utils.addAbortListener(signal, subscription.abort)
+      }
+
+      if (record.version) {
+        onUpdate(null, subscription)
+      }
+
+      return subscription
+    })
   }
 
   _$handle(message) {
