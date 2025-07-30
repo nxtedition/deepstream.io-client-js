@@ -505,13 +505,11 @@ class RecordHandler {
    * @returns {rxjs.Observable}
    */
   _observe(defaults, name, ...args) {
-    return new rxjs.Observable((subscriber) => {
-      this._subscribe(subscriber, defaults, name, ...args)
-    })
+    return new rxjs.Observable((subscriber) => this._subscribe(subscriber, defaults, name, ...args))
   }
 
   /**
-   * @returns {{ unsubscribe: Function }}
+   * @returns {{ unsubscribe: () => void }}
    */
   _subscribe(subscriber, defaults, name, ...args) {
     let path
