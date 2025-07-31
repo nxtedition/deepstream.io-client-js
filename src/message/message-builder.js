@@ -33,6 +33,7 @@ export function getMsg(topic, action, data, binary) {
     }
 
     if (!poolBuf || poolBuf.byteLength - poolPos < estimatedSize * 2) {
+      poolSize = Math.max(poolSize, estimatedSize * 2)
       poolBuf = Buffer.allocUnsafeSlow(poolSize)
       poolPos = 0
     }
