@@ -5,7 +5,7 @@ const SEP = C.MESSAGE_PART_SEPERATOR
 
 let poolBuf
 let poolPos = 0
-let poolSize = 2 * 1024 * 1024
+let poolLen = 2 * 1024 * 1024
 
 export function getMsg(topic, action, data, binary) {
   if (data && !(data instanceof Array)) {
@@ -33,8 +33,8 @@ export function getMsg(topic, action, data, binary) {
     }
 
     if (!poolBuf || poolBuf.byteLength - poolPos < estimatedSize * 2) {
-      poolSize = Math.max(poolSize, estimatedSize * 2)
-      poolBuf = Buffer.allocUnsafeSlow(poolSize)
+      poolLen = Math.max(poolLen, estimatedSize * 2)
+      poolBuf = Buffer.allocUnsafeSlow(poolLen)
       poolPos = 0
     }
 
@@ -79,7 +79,7 @@ export function getMsg(topic, action, data, binary) {
         dataPos += len
 
         if (dataPos >= poolPos + poolBuf.byteLength) {
-          poolSize *= poolPos === 0 ? 2 : 1
+          poolLen *= poolPos === 0 ? 2 : 1
           poolBuf = null
           poolPos = 0
           return getMsg(topic, action, data, binary)
