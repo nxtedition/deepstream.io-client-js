@@ -215,7 +215,10 @@ class RecordHandler {
    */
   getRecord(name) {
     invariant(
-      typeof name === 'string' && name.length > 0 && name !== '[object Object]',
+      typeof name === 'string' &&
+        name.length > 0 &&
+        name !== '[object Object]' &&
+        name.length <= 4096,
       `invalid name ${name}`,
     )
 
