@@ -1,6 +1,6 @@
 import type { Observable } from 'rxjs'
 import type DsRecord from './record.js'
-import type { EmptyObject, Get, Paths } from './record.js'
+import type { EmptyObject, Get } from './record.js'
 
 export default class RecordHandler<
   Lookup extends Record<string, unknown> = Record<string, unknown>,
@@ -40,7 +40,7 @@ export default class RecordHandler<
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      data: Path extends Paths<Lookup[Name]> ? Get<Lookup[Name], Path> : never,
+      data: unknown extends Get<Lookup[Name], Path> ? never : Get<Lookup[Name], Path>,
     ): void
   }
 

@@ -64,7 +64,10 @@ export default class Record<Data = unknown> {
 
   set: {
     // with path
-    <P extends string | string[]>(path: P, dataAtPath: Get<Data, P>): void
+    <P extends string | readonly string[]>(
+      path: P,
+      dataAtPath: unknown extends Get<Data, P> ? never : Get<Data, P>,
+    ): void
     // without path
     (data: SettablePossibleEmpty<Data>): void
   }
