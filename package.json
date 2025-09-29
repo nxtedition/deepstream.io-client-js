@@ -21,7 +21,8 @@
   "scripts": {
     "prepublishOnly": "pinst --disable",
     "postpublish": "pinst --enable",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:types": "tsd"
   },
   "lint-staged": {
     "*.{js,jsx,md,ts}": [
@@ -61,6 +62,7 @@
     "pinst": "^3.0.0",
     "prettier": "^3.3.3",
     "rxjs": "^7.8.1",
+    "tsd": "^0.33.0",
     "type-fest": "^4.33.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.12.2"

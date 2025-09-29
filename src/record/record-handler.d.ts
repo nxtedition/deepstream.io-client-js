@@ -1,10 +1,10 @@
 import type { Observable } from 'rxjs'
-import type Record, { EmptyObject, GettablePossibleEmpty, SettablePossibleEmpty } from './record.js'
+import type DsRecord from './record.js'
+import type { EmptyObject, Get, Paths } from './record.js'
 
-type Paths<T> = keyof T
-type Get<Data, Path extends string> = Path extends keyof Data ? Data[Path] : unknown
-
-export default class RecordHandler<Records> {
+export default class RecordHandler<
+  Lookup extends Record<string, unknown> = Record<string, unknown>,
+> {
   VOID: 0
   CLIENT: 1
   SERVER: 2
@@ -20,13 +20,13 @@ export default class RecordHandler<Records> {
   connected: boolean
   stats: RecordStats
 
-  getRecord: <Name extends keyof Records, Data extends Records[Name] = Records[Name]>(
+  getRecord<Name extends string, Data = Name extends keyof Lookup ? Lookup[Name] : unknown>(
     name: Name,
-  ) => Record<Data>
+  ): DsRecord<Data>
 
-  provide: <Data>(
+  provide: (
     pattern: string,
-    callback: (key: string) => Data,
+    callback: (key: string) => unknown,
     optionsOrRecursive?: ProvideOptions | boolean,
   ) => void | (() => void)
 
@@ -34,115 +34,107 @@ export default class RecordHandler<Records> {
 
   set: {
     // without path:
-    <Name extends keyof Records>(name: Name, data: SettablePossibleEmpty<Records[Name]>): void
+    <Name extends string>(name: Name, data: Lookup[Name] | EmptyObject): void
 
     // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data>>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      data: Get<Data, Path>,
+      data: Path extends Paths<Lookup[Name]> ? Get<Lookup[Name], Path> : never,
     ): void
   }
 
   update: {
     // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
+    <Name extends string>(
       name: Name,
-      updater: (data: Readonly<GettablePossibleEmpty<Data>>) => SettablePossibleEmpty<Data>,
+      updater: (data: Lookup[Name]) => Lookup[Name] | EmptyObject,
     ): Promise<void>
 
     // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data>>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      updater: (data: Readonly<Get<Data, Path>> | undefined) => Get<Data, Path>,
+      updater: (data: Get<Lookup[Name], Path>) => Get<Lookup[Name], Path>,
     ): Promise<void>
   }
 
   observe: {
     // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-    ): Observable<GettablePossibleEmpty<Data>>
+    <Name extends string>(name: Name): Observable<Lookup[Name]>
 
     // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-    ): Observable<Get<Data, Path> | undefined>
+    ): Observable<Get<Lookup[Name], Path>>
 
     // with state:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-      state: number,
-    ): Observable<GettablePossibleEmpty<Data>>
+    <Name extends string>(name: Name, state: number): Observable<Lookup[Name]>
 
     // with path and state:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       state: number,
-    ): Observable<Get<Data, Path> | undefined>
+    ): Observable<Get<Lookup[Name], Path>>
   }
 
   get: {
     // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
-      name: Name,
-      state?: number,
-    ): Promise<GettablePossibleEmpty<Data>>
+    <Name extends string>(name: Name, state?: number): Promise<Lookup[Name]>
 
     // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
-      path?: Path,
+      path: Path,
       state?: number,
-    ): Promise<Get<Data, Path> | undefined>
+    ): Promise<Get<Lookup[Name], Path>>
   }
 
   observe2: {
     // without path:
-    <Name extends keyof Records, Data extends Records[Name]>(
+    <Name extends string>(
       name: Name,
     ): Observable<{
-      name: Name
+      name: string
       version: string
       state: number
-      data: GettablePossibleEmpty<Data>
+      data: Lookup[Name]
     }>
 
     // with path:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
     ): Observable<{
-      name: Name
+      name: string
       version: string
       state: number
-      data: Get<Data, Path> | undefined
+      data: Get<Lookup[Name], Path>
     }>
 
     // with state:
-    <Name extends keyof Records, Data extends Records[Name]>(
+    <Name extends string>(
       name: Name,
       state: number,
     ): Observable<{
-      name: Name
+      name: string
       version: string
       state: number
-      data: GettablePossibleEmpty<Data>
+      data: Lookup[Name]
     }>
 
     // with path and state:
-    <Name extends keyof Records, Data extends Records[Name], Path extends Paths<Data> & string>(
+    <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       state: number,
     ): Observable<{
-      name: Name
+      name: string
       version: string
       state: number
-      data: Get<Data, Path> | undefined
+      data: Get<Lookup[Name], Path>
     }>
   }
 }
@@ -155,4 +147,14 @@ export interface RecordStats {
   pruning: number
   patching: number
   subscriptions: number
+}
+
+export interface ProvideOptions {
+  recursive?: boolean
+  stringify?: ((input: unknown) => string) | null
+}
+
+export interface SyncOptions {
+  signal?: AbortSignal
+  timeout?: number
 }

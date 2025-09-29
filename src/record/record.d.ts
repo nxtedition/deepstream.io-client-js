@@ -1,10 +1,6 @@
 import type RecordHandler from './record-handler.js'
-import type { EmptyObject, SingleKeyObject } from 'type-fest'
-
-type Paths<T> = keyof T
-type Get<Data, Path extends string> = Path extends keyof Data ? Data[Path] : unknown
-
-export type { EmptyObject } from 'type-fest'
+import type { Get, EmptyObject, SingleKeyObject } from 'type-fest'
+export type { Get, Paths, EmptyObject } from 'type-fest'
 
 // When getting, for convenience, we say the data might be partial under some
 // circumstances.
@@ -45,12 +41,12 @@ export interface UpdateOptions {
   signal?: AbortSignal
 }
 
-export default class Record<Data> {
+export default class Record<Data = unknown> {
   constructor(name: string, handler: RecordHandler)
 
   readonly name: string
   readonly version: string
-  readonly data: GettablePossibleEmpty<Data>
+  readonly data: Data
   readonly state: number
   readonly refs: number
 
@@ -61,29 +57,16 @@ export default class Record<Data> {
 
   get: {
     // with path
-    <Path extends Paths<Data>, DataAtPath extends Get<Data, Path> = Get<Data, Path>>(
-      path: Path,
-    ): DataAtPath | undefined
+    <P extends string | string[]>(path: P): Get<Data, P>
     // without path
-    (): GettablePossibleEmpty<Data>
-    // implementation
-    <Path extends Paths<Data>, DataAtPath extends Get<Data, Path> = Get<Data, Path>>(
-      path?: Path,
-    ): Path extends undefined ? GettablePossibleEmpty<Data> : DataAtPath | undefined
+    (): Data
   }
 
   set: {
     // with path
-    <Path extends Paths<Data>, DataAtPath extends Get<Data, Path>>(
-      path: Path,
-      dataAtPath: DataAtPath,
-    ): void
+    <P extends string | string[]>(path: P, dataAtPath: Get<Data, P>): void
     // without path
     (data: SettablePossibleEmpty<Data>): void
-    // implementation
-    <Path extends Paths<Data>, DataAtPath extends Get<Data, Path>>(
-      ...args: [pathOrData: Path | SettablePossibleEmpty<Data>, value?: DataAtPath]
-    ): void
   }
 
   when: {
@@ -93,18 +76,17 @@ export default class Record<Data> {
     (state: number, options: WhenOptions): Promise<Record<Data>>
   }
 
-  update<
-    Path extends Paths<Data>,
-    PathOrUpdater extends
-      | Path
-      | ((data: Readonly<GettablePossibleEmpty<Data>>) => SettablePossibleEmpty<Data>),
-  >(
-    ...args: PathOrUpdater extends Path
-      ? [
-          path: Path,
-          updater: (dataAtPath: Readonly<Get<Data, Path>> | undefined) => Get<Data, Path>,
-          options?: UpdateOptions,
-        ]
-      : [updater: PathOrUpdater, options?: UpdateOptions]
-  ): Promise<void>
+  update: {
+    // without path
+    (
+      updater: (data: Readonly<Data>) => SettablePossibleEmpty<Data>,
+      options?: UpdateOptions,
+    ): Promise<void>
+    // with path
+    <P extends string | string[]>(
+      path: P,
+      updater: (dataAtPath: Readonly<Get<Data, P>>) => Get<Data, P>,
+      options?: UpdateOptions,
+    ): Promise<void>
+  }
 }

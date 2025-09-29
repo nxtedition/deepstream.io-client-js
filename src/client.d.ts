@@ -1,14 +1,28 @@
-import type Record from './record/record.js'
-import type RecordHandler, { RecordStats } from './record/record-handler.js'
-import type EventHandler, { EventStats } from './event/event-handler.js'
-import type RpcHandler, { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
+import type DsRecord from './record/record.js'
+import type { Paths, Get } from './record/record.js'
+import type RecordHandler from './record/record-handler.js'
+import type { RecordStats, ProvideOptions, SyncOptions } from './record/record-handler.js'
+import type EventHandler from './event/event-handler.js'
+import type { EventStats } from './event/event-handler.js'
+import type RpcHandler from './rpc/rpc-handler.js'
+import type { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
-export default function <Records, Methods>(
-  url: string,
-  options?: unknown,
-): DeepstreamClient<Records, Methods>
+export default function <
+  Records extends Record<string, unknown> = Record<string, unknown>,
+  Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
+>(url: string, options?: unknown): DeepstreamClient<Records, Methods>
 
-export type { Record, RecordHandler, EventHandler, RpcHandler }
+export type {
+  DsRecord,
+  RecordHandler,
+  EventHandler,
+  RpcHandler,
+  RpcMethodDef,
+  ProvideOptions,
+  SyncOptions,
+  Paths,
+  Get,
+}
 
 type RecordStateConstants = Readonly<{
   VOID: 0
@@ -28,8 +42,8 @@ type ConnectionStateConstants = Readonly<{
   ERROR: 'ERROR'
   RECONNECTING: 'RECONNECTING'
 }>
-type ConnectionStateKey = keyof typeof ConnectionStateConstants
-type ConnectionStateName = (typeof ConnectionStateConstants)[ConnectionStateKey]
+type ConnectionStateKey = keyof ConnectionStateConstants
+type ConnectionStateName = ConnectionStateConstants[ConnectionStateKey]
 
 type EventConstants = Readonly<{
   CONNECTION_ERROR: 'connectionError'
@@ -61,12 +75,12 @@ type EventConstants = Readonly<{
   RECORD_NOT_FOUND: 'RECORD_NOT_FOUND'
   NOT_SUBSCRIBED: 'NOT_SUBSCRIBED'
 }>
-type EventKey = keyof typeof EventConstants
-type EventName = (typeof EventConstants)[EventKey]
+type EventKey = keyof EventConstants
+type EventName = EventConstants[EventKey]
 
 export interface DeepstreamClient<
-  Records = Record<string, unknown>,
-  Methods = Record<string, RpcMethodDef>,
+  Records extends Record<string, unknown> = Record<string, unknown>,
+  Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
 > {
   nuid: () => string
   event: EventHandler
@@ -91,14 +105,4 @@ export interface DeepstreamClient<
     RECORD_STATE: RecordStateConstants
     EVENT: EventConstants
   }
-}
-
-export interface ProvideOptions {
-  recursive?: boolean
-  stringify?: ((input: unknown) => string) | null
-}
-
-export interface SyncOptions {
-  signal?: AbortSignal
-  timeout?: number
 }
