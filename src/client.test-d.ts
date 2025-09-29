@@ -72,6 +72,8 @@ ds.record.set('c', 'a.b1', 'test')
 ds.record.set('x:domain', 'd1', 'test')
 const id = 'id'
 ds.record.set(`${id}:domain`, 'd2.d3', 'test')
+expectError(ds.record.set(`${id}:domain`, 'd2.d3', 22))
+ds.record.set(`${id}:domain`, ['d2', 'd3'] as const, 'test')
 
 expectAssignable<string>(await ds.record.get(`${id}:domain`, 'd2.d3'))
 
@@ -98,8 +100,7 @@ const daRec = ds.record.getRecord('o')
 daRec.set({ o0: {} })
 
 daRec.update('o0', (x) => ({ ...x, o1: {} }))
+expectError(daRec.set('o0.x1', {}))
+daRec.set('o0.o1', {})
 expectError(daRec.update((x) => 'x'))
 expectError(daRec.update('o0', (x) => ({ ...x, o1: '22' })))
-
-ds.record.set('foo', { num: [22, true] })
-ds.record.set('foo', { num: ['22'] })
