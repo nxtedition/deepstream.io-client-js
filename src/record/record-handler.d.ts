@@ -2,9 +2,9 @@ import type { Observable } from 'rxjs'
 import type DsRecord from './record.js'
 import type { EmptyObject, Get } from './record.js'
 
-export default class RecordHandler<
-  Lookup extends Record<string, unknown> = Record<string, unknown>,
-> {
+type Lookup<Table, Name> = Name extends keyof Table ? Table[Name] : unknown
+
+export default class RecordHandler<Records = Record<string, unknown>> {
   VOID: 0
   CLIENT: 1
   SERVER: 2
@@ -20,9 +20,7 @@ export default class RecordHandler<
   connected: boolean
   stats: RecordStats
 
-  getRecord<Name extends string, Data = Name extends keyof Lookup ? Lookup[Name] : unknown>(
-    name: Name,
-  ): DsRecord<Data>
+  getRecord<Name extends string, Data = Lookup<Records, Name>>(name: Name): DsRecord<Data>
 
   provide: (
     pattern: string,
@@ -34,13 +32,15 @@ export default class RecordHandler<
 
   set: {
     // without path:
-    <Name extends string>(name: Name, data: Lookup[Name] | EmptyObject): void
+    <Name extends string>(name: Name, data: Lookup<Records, Name> | EmptyObject): void
 
     // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      data: unknown extends Get<Lookup[Name], Path> ? never : Get<Lookup[Name], Path>,
+      data: unknown extends Get<Lookup<Records, Name>, Path>
+        ? never
+        : Get<Lookup<Records, Name>, Path>,
     ): void
   }
 
@@ -48,48 +48,48 @@ export default class RecordHandler<
     // without path:
     <Name extends string>(
       name: Name,
-      updater: (data: Lookup[Name]) => Lookup[Name] | EmptyObject,
+      updater: (data: Lookup<Records, Name>) => Lookup<Records, Name> | EmptyObject,
     ): Promise<void>
 
     // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      updater: (data: Get<Lookup[Name], Path>) => Get<Lookup[Name], Path>,
+      updater: (data: Get<Lookup<Records, Name>, Path>) => Get<Lookup<Records, Name>, Path>,
     ): Promise<void>
   }
 
   observe: {
     // without path:
-    <Name extends string>(name: Name): Observable<Lookup[Name]>
+    <Name extends string>(name: Name): Observable<Lookup<Records, Name>>
 
     // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-    ): Observable<Get<Lookup[Name], Path>>
+    ): Observable<Get<Lookup<Records, Name>, Path>>
 
     // with state:
-    <Name extends string>(name: Name, state: number): Observable<Lookup[Name]>
+    <Name extends string>(name: Name, state: number): Observable<Lookup<Records, Name>>
 
     // with path and state:
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       state: number,
-    ): Observable<Get<Lookup[Name], Path>>
+    ): Observable<Get<Lookup<Records, Name>, Path>>
   }
 
   get: {
     // without path:
-    <Name extends string>(name: Name, state?: number): Promise<Lookup[Name]>
+    <Name extends string>(name: Name, state?: number): Promise<Lookup<Records, Name>>
 
     // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       state?: number,
-    ): Promise<Get<Lookup[Name], Path>>
+    ): Promise<Get<Lookup<Records, Name>, Path>>
   }
 
   observe2: {
@@ -100,7 +100,7 @@ export default class RecordHandler<
       name: string
       version: string
       state: number
-      data: Lookup[Name]
+      data: Lookup<Records, Name>
     }>
 
     // with path:
@@ -111,7 +111,7 @@ export default class RecordHandler<
       name: string
       version: string
       state: number
-      data: Get<Lookup[Name], Path>
+      data: Get<Lookup<Records, Name>, Path>
     }>
 
     // with state:
@@ -122,7 +122,7 @@ export default class RecordHandler<
       name: string
       version: string
       state: number
-      data: Lookup[Name]
+      data: Lookup<Records, Name>
     }>
 
     // with path and state:
@@ -134,7 +134,7 @@ export default class RecordHandler<
       name: string
       version: string
       state: number
-      data: Get<Lookup[Name], Path>
+      data: Get<Lookup<Records, Name>, Path>
     }>
   }
 }

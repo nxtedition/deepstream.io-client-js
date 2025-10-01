@@ -2,7 +2,9 @@ import RpcResponse from './rpc-response.js'
 
 export type RpcMethodDef = [arguments: unknown, response: unknown]
 
-export default class RpcHandler<Methods extends Record<string, RpcMethodDef>> {
+export default class RpcHandler<
+  Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
+> {
   connected: boolean
   stats: RpcStats
 
