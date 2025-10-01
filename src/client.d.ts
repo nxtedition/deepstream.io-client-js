@@ -79,7 +79,7 @@ type EventKey = keyof EventConstants
 type EventName = EventConstants[EventKey]
 
 export interface DeepstreamClient<
-  Records = Record<string, unknown>,
+  Records,
   Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
 > {
   nuid: () => string
