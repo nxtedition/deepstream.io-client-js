@@ -8,7 +8,7 @@ import type RpcHandler from './rpc/rpc-handler.js'
 import type { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
 export default function <
-  Records extends Record<string, unknown> = Record<string, unknown>,
+  Records,
   Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
 >(url: string, options?: unknown): DeepstreamClient<Records, Methods>
 
@@ -79,7 +79,7 @@ type EventKey = keyof EventConstants
 type EventName = EventConstants[EventKey]
 
 export interface DeepstreamClient<
-  Records extends Record<string, unknown> = Record<string, unknown>,
+  Records = Record<string, unknown>,
   Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
 > {
   nuid: () => string
