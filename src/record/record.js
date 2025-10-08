@@ -418,7 +418,7 @@ class Record {
           cause: err
         })
       }
-      this._data = jsonPath.set(this._data, null, jsonPath.parse(data), true)
+      this._data = jsonPath.set(this._data, null, parsedData, true)
       this._version = version
     }
 
