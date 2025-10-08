@@ -407,6 +407,17 @@ class Record {
         ? this._version !== version
         : utils.compareRev(version, this._version) > 0
     ) {
+      let parsedData
+      try {
+        parsedData = jsonPath.parse(data)
+      } catch (err) {
+        throw Object.assign(new Error('invalid data'), {
+          name: this.name,
+          version,
+          data,
+          cause: err
+        })
+      }
       this._data = jsonPath.set(this._data, null, jsonPath.parse(data), true)
       this._version = version
     }
