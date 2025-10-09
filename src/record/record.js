@@ -415,6 +415,7 @@ class Record {
           key: this.name,
           version,
           data,
+          length: data?.length,
           cause: err,
         })
       }
