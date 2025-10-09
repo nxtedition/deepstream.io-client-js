@@ -412,10 +412,10 @@ class Record {
         parsedData = jsonPath.parse(data)
       } catch (err) {
         throw Object.assign(new Error('invalid data'), {
-          name: this.name,
+          key: this.name,
           version,
           data,
-          cause: err
+          cause: err,
         })
       }
       this._data = jsonPath.set(this._data, null, parsedData, true)
