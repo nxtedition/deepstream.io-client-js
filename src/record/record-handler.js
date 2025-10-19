@@ -479,8 +479,50 @@ class RecordHandler {
   }
 
   /**
+   *
+   * @param {*} name
    * @param  {...any} args
-   * @returns {Promise}
+   * @returns { { value: object, async: false } | { value: Promise<object>, async: true } }
+   */
+  getAsync(name, ...args) {
+    let path
+    let state = GET_DEFAULTS.state
+
+    let idx = 0
+
+    if (
+      idx < args.length &&
+      (args[idx] == null ||
+        typeof args[idx] === 'string' ||
+        Array.isArray(args[idx]) ||
+        typeof args[idx] === 'function')
+    ) {
+      path = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
+      state = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
+      return { value: this.get(name, ...args), async: true }
+    }
+
+    const rec = this.getRecord(name)
+    try {
+      if (rec.state >= state) {
+        return { value: rec.get(path), async: false }
+      }
+    } finally {
+      rec.unref()
+    }
+
+    return { value: this.get(name, ...args), async: true }
+  }
+
+  /**
+   * @param  {...any} args
+   * @returns {Promise<object>}
    */
   get(...args) {
     return rxjs.firstValueFrom(this._observe(GET_DEFAULTS, ...args))
@@ -488,7 +530,7 @@ class RecordHandler {
 
   /**
    * @param  {...any} args
-   * @returns {Promise}
+   * @returns {Promise<object>}
    */
   get2(...args) {
     return rxjs.firstValueFrom(this._observe(GET2_DEFAULTS, ...args))
