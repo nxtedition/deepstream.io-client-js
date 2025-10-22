@@ -15,6 +15,7 @@ export default function Connection(client, url, options) {
   this._logger = options.logger
   this._schedule = options.schedule ?? utils.schedule
   this._batchSize = options.batchSize ?? 1024
+  this._priority = options.priority ?? 0
   this._authParams = null
   this._authCallback = null
   this._deliberateClose = false
@@ -179,6 +180,7 @@ Connection.prototype._sendAuthParams = function () {
     utils.isNode
       ? `Node/${process.version}`
       : globalThis.navigator && globalThis.navigator.userAgent,
+    `${this._priority || 0}`,
   ])
   this._submit(authMessage)
 }
