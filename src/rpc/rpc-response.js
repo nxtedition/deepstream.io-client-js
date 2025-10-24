@@ -27,7 +27,7 @@ RpcResponse.prototype.error = function (error) {
     this._name,
     this._id,
     error.message || error,
-    true,
+    messageBuilder.typed(true),
   ])
 }
 
