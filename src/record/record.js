@@ -524,6 +524,8 @@ class Record {
       arr[n + 0](this, arr[n + 1])
     }
 
+    this._handler._client.emit('recordUpdated', this)
+
     this._emitting = false
   }
 }
