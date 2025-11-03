@@ -1,4 +1,5 @@
-import make from './client.js'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import make, { type DeepstreamClient } from './client.js'
 import { expectAssignable, expectError } from 'tsd'
 import type { Observable } from 'rxjs'
 
@@ -48,6 +49,14 @@ interface Circular {
 }
 
 const ds = make<Records>('')
+
+// Test that make() returns DeepstreamClient with appropriate generics
+expectAssignable<DeepstreamClient>(make(''))
+// When you want to accept "any client" regardless of Records type, use DeepstreamClient<any>
+expectAssignable<DeepstreamClient<any>>(make<Records>(''))
+expectAssignable<DeepstreamClient<any, any>>(make<Records>(''))
+expectAssignable<DeepstreamClient<any>>(ds)
+expectAssignable<DeepstreamClient<any, any>>(ds)
 
 expectAssignable<{ n0?: { n1: { n2: { n3: string } } } } | undefined>(await ds.record.get('n'))
 expectAssignable<{ n1: { n2: { n3: string } } } | undefined>(await ds.record.get('n', 'n0'))
