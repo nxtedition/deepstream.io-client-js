@@ -86,6 +86,8 @@ expectError(ds.record.set('n', 'n1.x2', {}))
 expectError(ds.record.set('n', 'n1.n2.n3', { n4: 22 }))
 
 expectAssignable<string>(await ds.record.get('p', 'p1'))
+expectAssignable<string>(await ds.record.get('p', 'p1', { signal: new AbortController().signal }))
+expectAssignable<string>(await ds.record.get('p', { path: 'p1' }))
 expectAssignable<string | undefined>(await ds.record.get('p', 'p2'))
 expectAssignable<unknown>(await ds.record.get('p', 'x1'))
 

@@ -4,6 +4,18 @@ import type { EmptyObject, Get } from './record.js'
 
 type Lookup<Table, Name> = Name extends keyof Table ? Table[Name] : unknown
 
+interface Options {
+  signal?: AbortSignal
+  timeout?: number
+  state?: number
+  dataOnly?: boolean
+  sync?: boolean
+}
+
+interface OptionsWithPath<Path extends string | string[]> extends Options {
+  path?: Path
+}
+
 export default class RecordHandler<Records = Record<string, unknown>> {
   VOID: 0
   CLIENT: 1
@@ -81,14 +93,36 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   }
 
   get: {
-    // without path:
-    <Name extends string>(name: Name, state?: number): Promise<Lookup<Records, Name>>
+    <Name extends string>(name: Name, options: Options): Promise<Lookup<Records, Name>>
 
-    // with path:
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      options: OptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+
+    <Name extends string>(
+      name: Name,
+      state?: number,
+      options?: Options,
+    ): Promise<Lookup<Records, Name>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      state?: number,
+      options?: OptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      options?: OptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       state?: number,
+      options?: OptionsWithPath<Path>,
     ): Promise<Get<Lookup<Records, Name>, Path>>
   }
 
