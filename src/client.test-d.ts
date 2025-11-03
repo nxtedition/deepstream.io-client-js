@@ -1,5 +1,6 @@
 import make from './client.js'
 import { expectAssignable, expectError } from 'tsd'
+import type { Observable } from 'rxjs'
 
 interface Records extends Record<string, unknown> {
   o: {
@@ -91,6 +92,84 @@ expectAssignable<string>(await ds.record.get('p', { path: 'p1' }))
 expectAssignable<string | undefined>(await ds.record.get('p', 'p2'))
 expectAssignable<unknown>(await ds.record.get('p', 'x1'))
 
+// observe with options
+expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
+  ds.record.observe('p', { signal: new AbortController().signal }),
+)
+expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
+  ds.record.observe('p', { timeout: 5000 }),
+)
+expectAssignable<Observable<string>>(
+  ds.record.observe('p', 'p1', { signal: new AbortController().signal }),
+)
+expectAssignable<Observable<string>>(ds.record.observe('p', { path: 'p1', timeout: 5000 }))
+expectAssignable<Observable<string>>(
+  ds.record.observe('p', 'p1', 2, { signal: new AbortController().signal }),
+)
+expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
+  ds.record.observe('p', 2, { timeout: 5000 }),
+)
+
+// observe2 with options
+expectAssignable<
+  Observable<{
+    name: string
+    version: string
+    state: number
+    data: { p1: string; p2?: string; p3: { p4: string } }
+  }>
+>(ds.record.observe2('p', { signal: new AbortController().signal }))
+expectAssignable<
+  Observable<{
+    name: string
+    version: string
+    state: number
+    data: { p1: string; p2?: string; p3: { p4: string } }
+  }>
+>(ds.record.observe2('p', { timeout: 5000 }))
+expectAssignable<
+  Observable<{
+    name: string
+    version: string
+    state: number
+    data: string
+  }>
+>(ds.record.observe2('p', 'p1', { signal: new AbortController().signal }))
+expectAssignable<
+  Observable<{
+    name: string
+    version: string
+    state: number
+    data: string
+  }>
+>(ds.record.observe2('p', { path: 'p1', timeout: 5000 }))
+expectAssignable<
+  Observable<{
+    name: string
+    version: string
+    state: number
+    data: string
+  }>
+>(ds.record.observe2('p', 'p1', 2, { signal: new AbortController().signal }))
+expectAssignable<
+  Observable<{
+    name: string
+    version: string
+    state: number
+    data: { p1: string; p2?: string; p3: { p4: string } }
+  }>
+>(ds.record.observe2('p', 2, { timeout: 5000 }))
+
+// update with options
+expectAssignable<Promise<void>>(
+  ds.record.update('p', (data) => data, { signal: new AbortController().signal }),
+)
+expectAssignable<Promise<void>>(ds.record.update('p', (data) => data, { timeout: 5000 }))
+expectAssignable<Promise<void>>(
+  ds.record.update('p', 'p1', (data) => data, { signal: new AbortController().signal }),
+)
+expectAssignable<Promise<void>>(ds.record.update('p', 'p1', (data) => data, { timeout: 5000 }))
+
 // Circular
 expectAssignable<string | undefined>(await ds.record.get('c', 'a.b1'))
 
@@ -98,11 +177,31 @@ expectAssignable<string | undefined>(await ds.record.get('c', 'a.b1'))
 //
 
 // getRecord
-const daRec = ds.record.getRecord('o')
-daRec.set({ o0: {} })
+const rec = ds.record.getRecord('o')
+rec.set({ o0: {} })
 
-daRec.update('o0', (x) => ({ ...x, o1: {} }))
-expectError(daRec.set('o0.x1', {}))
-daRec.set('o0.o1', {})
-expectError(daRec.update((x) => 'x'))
-expectError(daRec.update('o0', (x) => ({ ...x, o1: '22' })))
+rec.update('o0', (x) => ({ ...x, o1: {} }))
+expectError(rec.set('o0.x1', {}))
+rec.set('o0.o1', {})
+expectError(rec.update((x) => 'x'))
+expectError(rec.update('o0', (x) => ({ ...x, o1: '22' })))
+
+// when with options
+expectAssignable<Promise<typeof rec>>(rec.when())
+expectAssignable<Promise<typeof rec>>(rec.when(2))
+expectAssignable<Promise<typeof rec>>(rec.when({ timeout: 5000 }))
+expectAssignable<Promise<typeof rec>>(rec.when({ signal: new AbortController().signal }))
+expectAssignable<Promise<typeof rec>>(rec.when({ state: 2 }))
+expectAssignable<Promise<typeof rec>>(rec.when({ state: 2, timeout: 5000 }))
+expectAssignable<Promise<typeof rec>>(rec.when(2, { timeout: 5000 }))
+expectAssignable<Promise<typeof rec>>(rec.when(2, { signal: new AbortController().signal }))
+
+// Record.update with options
+expectAssignable<Promise<void>>(rec.update((x) => x, { signal: new AbortController().signal }))
+expectAssignable<Promise<void>>(rec.update((x) => x, { timeout: 5000 }))
+expectAssignable<Promise<void>>(rec.update((x) => x, { state: 2 }))
+expectAssignable<Promise<void>>(
+  rec.update('o0', (x) => x, { signal: new AbortController().signal }),
+)
+expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { timeout: 5000 }))
+expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { state: 2 }))

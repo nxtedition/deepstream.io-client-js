@@ -1,20 +1,14 @@
 import type { Observable } from 'rxjs'
 import type DsRecord from './record.js'
-import type { EmptyObject, Get } from './record.js'
+import type {
+  EmptyObject,
+  Get,
+  UpdateOptions,
+  ObserveOptions,
+  ObserveOptionsWithPath,
+} from './record.js'
 
 type Lookup<Table, Name> = Name extends keyof Table ? Table[Name] : unknown
-
-interface Options {
-  signal?: AbortSignal
-  timeout?: number
-  state?: number
-  dataOnly?: boolean
-  sync?: boolean
-}
-
-interface OptionsWithPath<Path extends string | string[]> extends Options {
-  path?: Path
-}
 
 export default class RecordHandler<Records = Record<string, unknown>> {
   VOID: 0
@@ -57,79 +51,92 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   }
 
   update: {
-    // without path:
     <Name extends string>(
       name: Name,
       updater: (data: Lookup<Records, Name>) => Lookup<Records, Name> | EmptyObject,
+      options?: UpdateOptions,
     ): Promise<void>
 
-    // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       updater: (data: Get<Lookup<Records, Name>, Path>) => Get<Lookup<Records, Name>, Path>,
+      options?: UpdateOptions,
     ): Promise<void>
   }
 
   observe: {
-    // without path:
-    <Name extends string>(name: Name): Observable<Lookup<Records, Name>>
+    <Name extends string>(name: Name, options: ObserveOptions): Observable<Lookup<Records, Name>>
 
-    // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
-      path: Path,
+      options: ObserveOptionsWithPath<Path>,
     ): Observable<Get<Lookup<Records, Name>, Path>>
 
-    // with state:
-    <Name extends string>(name: Name, state: number): Observable<Lookup<Records, Name>>
+    <Name extends string>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptions,
+    ): Observable<Lookup<Records, Name>>
 
-    // with path and state:
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Observable<Get<Lookup<Records, Name>, Path>>
+
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      state: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Observable<Get<Lookup<Records, Name>, Path>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
     ): Observable<Get<Lookup<Records, Name>, Path>>
   }
 
   get: {
-    <Name extends string>(name: Name, options: Options): Promise<Lookup<Records, Name>>
+    <Name extends string>(name: Name, options: ObserveOptions): Promise<Lookup<Records, Name>>
 
     <Name extends string, Path extends string | string[]>(
       name: Name,
-      options: OptionsWithPath<Path>,
+      options: ObserveOptionsWithPath<Path>,
     ): Promise<Get<Lookup<Records, Name>, Path>>
 
     <Name extends string>(
       name: Name,
       state?: number,
-      options?: Options,
+      options?: ObserveOptions,
     ): Promise<Lookup<Records, Name>>
 
     <Name extends string, Path extends string | string[]>(
       name: Name,
       state?: number,
-      options?: OptionsWithPath<Path>,
+      options?: ObserveOptionsWithPath<Path>,
     ): Promise<Get<Lookup<Records, Name>, Path>>
 
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      options?: OptionsWithPath<Path>,
+      options?: ObserveOptionsWithPath<Path>,
     ): Promise<Get<Lookup<Records, Name>, Path>>
 
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
       state?: number,
-      options?: OptionsWithPath<Path>,
+      options?: ObserveOptionsWithPath<Path>,
     ): Promise<Get<Lookup<Records, Name>, Path>>
   }
 
   observe2: {
-    // without path:
     <Name extends string>(
       name: Name,
+      options: ObserveOptions,
     ): Observable<{
       name: string
       version: string
@@ -137,10 +144,9 @@ export default class RecordHandler<Records = Record<string, unknown>> {
       data: Lookup<Records, Name>
     }>
 
-    // with path:
     <Name extends string, Path extends string | string[]>(
       name: Name,
-      path: Path,
+      options: ObserveOptionsWithPath<Path>,
     ): Observable<{
       name: string
       version: string
@@ -148,10 +154,10 @@ export default class RecordHandler<Records = Record<string, unknown>> {
       data: Get<Lookup<Records, Name>, Path>
     }>
 
-    // with state:
     <Name extends string>(
       name: Name,
-      state: number,
+      state?: number,
+      options?: ObserveOptions,
     ): Observable<{
       name: string
       version: string
@@ -159,11 +165,33 @@ export default class RecordHandler<Records = Record<string, unknown>> {
       data: Lookup<Records, Name>
     }>
 
-    // with path and state:
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Observable<{
+      name: string
+      version: string
+      state: number
+      data: Get<Lookup<Records, Name>, Path>
+    }>
+
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      state: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Observable<{
+      name: string
+      version: string
+      state: number
+      data: Get<Lookup<Records, Name>, Path>
+    }>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
     ): Observable<{
       name: string
       version: string

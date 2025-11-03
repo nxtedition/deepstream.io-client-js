@@ -33,12 +33,27 @@ export type GettablePossibleEmpty<Data> = keyof Data extends never
 export type SettablePossibleEmpty<Data> = Data | EmptyObject
 
 export interface WhenOptions {
-  timeout?: number
   signal?: AbortSignal
+  timeout?: number
+  state?: number
 }
 
 export interface UpdateOptions {
   signal?: AbortSignal
+  timeout?: number
+  state?: number
+}
+
+export interface ObserveOptions {
+  signal?: AbortSignal
+  timeout?: number
+  state?: number
+  dataOnly?: boolean
+  sync?: boolean
+}
+
+export interface ObserveOptionsWithPath<Path extends string | string[]> extends ObserveOptions {
+  path?: Path
 }
 
 export default class Record<Data = unknown> {
@@ -74,9 +89,8 @@ export default class Record<Data = unknown> {
 
   when: {
     (): Promise<Record<Data>>
-    (state: number): Promise<Record<Data>>
     (options: WhenOptions): Promise<Record<Data>>
-    (state: number, options: WhenOptions): Promise<Record<Data>>
+    (state: number, options?: WhenOptions): Promise<Record<Data>>
   }
 
   update: {
