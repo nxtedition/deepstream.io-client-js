@@ -472,24 +472,25 @@ class RecordHandler {
   }
 
   /**
+   * @param {string} name
    * @param  {...any} args
    * @returns {rxjs.Observable}
    */
-  observe(...args) {
-    return this._observe(OBSERVE_DEFAULTS, ...args)
+  observe(name, ...args) {
+    return this._observe(OBSERVE_DEFAULTS, name, ...args)
   }
 
   /**
+   * @param {string} name
    * @param  {...any} args
    * @returns {rxjs.Observable<{ name: string, version: string, state: Number, data: any}>}
    */
-  observe2(...args) {
-    return this._observe(OBSERVE2_DEFAULTS, ...args)
+  observe2(name, ...args) {
+    return this._observe(OBSERVE2_DEFAULTS, name, ...args)
   }
 
   /**
-   *
-   * @param {*} name
+   * @param {string} name
    * @param  {...any} args
    * @returns { { value: object, async: false } | { value: Promise<object>, async: true } }
    */
@@ -536,19 +537,21 @@ class RecordHandler {
   }
 
   /**
+   * @param {string} name
    * @param  {...any} args
    * @returns {Promise<object>}
    */
-  get(...args) {
-    return rxjs.firstValueFrom(this._observe(GET_DEFAULTS, ...args))
+  get(name, ...args) {
+    return rxjs.firstValueFrom(this._observe(GET_DEFAULTS, name, ...args))
   }
 
   /**
+   * @param {string} name
    * @param  {...any} args
    * @returns {Promise<object>}
    */
-  get2(...args) {
-    return rxjs.firstValueFrom(this._observe(GET2_DEFAULTS, ...args))
+  get2(name, ...args) {
+    return rxjs.firstValueFrom(this._observe(GET2_DEFAULTS, name, ...args))
   }
 
   /**
@@ -610,9 +613,6 @@ class RecordHandler {
       if (typeof state === 'string') {
         state = C.RECORD_STATE[state.toUpperCase()]
       }
-
-      // TODO (fix): Validate path?
-      // TODO (fix): Validate signal?
 
       if (!Number.isInteger(state) || state < 0) {
         throw new Error('invalid argument: state')
