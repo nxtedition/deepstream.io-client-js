@@ -49,7 +49,7 @@ function refreshTimeout() {
   }
 }
 
-class Timeout {
+class FastTimeout {
   constructor(callback, delay, opaque) {
     this.callback = callback
     this.delay = delay
@@ -84,14 +84,32 @@ class Timeout {
   }
 }
 
+/**
+ * @typedef {{
+ *  refresh: () => void,
+ *  [Symbol.dispose]: () => void,
+ * }} Timeout
+ */
+
+/**
+ * @param {(opaque?: any) => void} callback
+ * @param {number} delay
+ * @param {any} [opaque]
+ * @returns {Timeout}
+ */
 export function setTimeout(callback, delay, opaque) {
   return delay < fastNowInterval
-    ? globalThis.setTimeout(callback, delay, opaque)
-    : new Timeout(callback, delay, opaque)
+    ? opaque
+      ? globalThis.setTimeout(() => callback(opaque), delay)
+      : globalThis.setTimeout(callback, delay)
+    : new FastTimeout(callback, delay, opaque)
 }
 
+/**
+ * @param {Timeout} timeout
+ */
 export function clearTimeout(timeout) {
-  if (timeout instanceof Timeout) {
+  if (timeout instanceof FastTimeout) {
     timeout.clear()
   } else {
     globalThis.clearTimeout(timeout)

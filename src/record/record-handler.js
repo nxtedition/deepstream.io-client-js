@@ -9,6 +9,8 @@ import * as utils from '../utils/utils.js'
 import xuid from 'xuid'
 import * as timers from '../utils/timers.js'
 
+/** @import {Timeout} from '../utils/timers.js' */
+
 function noop() {}
 
 const kEmpty = Symbol('kEmpty')
@@ -41,17 +43,24 @@ function onUpdate(record, subscription) {
     return
   }
 
-  if (!subscription.synced) {
+  if (!subscription.synced || subscription.record.state < subscription.state) {
+    if (subscription.timeoutValue > 0) {
+      if (!subscription.timeoutHandle) {
+        subscription.timeoutHandle = timers.setTimeout(
+          onTimeout,
+          subscription.timeoutValue,
+          subscription,
+        )
+      } else {
+        subscription.timeoutHandle.refresh()
+      }
+    }
     return
   }
 
-  if (subscription.state && subscription.record.state < subscription.state) {
-    return
-  }
-
-  if (subscription.timeout) {
-    timers.clearTimeout(subscription.timeout)
-    subscription.timeout = null
+  if (subscription.timeoutHandle) {
+    timers.clearTimeout(subscription.timeoutHandle)
+    subscription.timeoutHandle = null
   }
 
   const data = subscription.path
@@ -542,11 +551,11 @@ class RecordHandler {
   _observe(defaults, name, ...args) {
     return new rxjs.Observable((subscriber) => {
       let path
-      let state = defaults?.state
-      let signal
-      let timeout = defaults?.timeout
-      let dataOnly = defaults?.dataOnly
-      let sync = defaults?.sync
+      let state = defaults?.state ?? C.RECORD_STATE.CLIENT
+      let signal = null
+      let timeout = defaults?.timeout ?? 0
+      let dataOnly = defaults?.dataOnly ?? false
+      let sync = defaults?.sync ?? false
 
       let idx = 0
 
@@ -596,31 +605,61 @@ class RecordHandler {
         state = C.RECORD_STATE[state.toUpperCase()]
       }
 
+      // TODO (fix): Validate path?
+      // TODO (fix): Validate signal?
+
+      if (!Number.isInteger(state) || state < 0) {
+        throw new Error('invalid argument: state')
+      }
+
+      if (!Number.isInteger(timeout) || timeout < 0) {
+        throw new Error('invalid argument: timeout')
+      }
+
+      if (typeof dataOnly !== 'boolean') {
+        throw new Error('invalid argument: dataOnly')
+      }
+
+      if (typeof sync !== 'boolean') {
+        throw new Error('invalid argument: sync')
+      }
+
       // TODO (perf): Make a class
       const subscription = {
+        /** @readonly @type {unknown} */
         subscriber,
+        /** @type {Record|null} */
+        record: this.getRecord(name),
+        /** @readonly @type {unknown} */
         path,
+        /** @readonly @type {number} */
         state,
-        synced: false,
+        /** @type {AbortSignal|null} */
         signal,
+        /** @readonly @type {boolean} */
         dataOnly,
-        data: kEmpty,
-        /** @type {NodeJS.Timeout|Timeout|null} */
-        timeout: null,
-        /** @type {Record?} */
-        record: null,
+        /** @readonly @type {number} */
+        timeoutValue: timeout,
+
+        /** @type {Timeout|null} */
+        timeoutHandle: null,
         /** @type {Function?} */
         abort: null,
+        /** @type {object|Array} */
+        data: kEmpty,
+        /** @type {boolean} */
+        synced: false,
+
         unsubscribe() {
-          if (this.timeout) {
-            timers.clearTimeout(this.timeout)
-            this.timeout = null
+          if (this.timeoutHandle) {
+            timers.clearTimeout(this.timeoutHandle)
+            this.timeoutHandle = null
           }
 
           if (this.signal) {
             utils.removeAbortListener(this.signal, this.abort)
-            this.signal = null
             this.abort = null
+            this.signal = null
           }
 
           if (this.record) {
@@ -631,30 +670,22 @@ class RecordHandler {
         },
       }
 
-      subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
+      if (subscription.record) {
+        subscription.record.subscribe(onUpdate, subscription)
 
-      const record = subscription.record
-
-      if (sync && record.state >= C.RECORD_STATE.SERVER) {
-        this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
-      } else {
-        subscription.synced = true
+        if (sync && subscription.record.state >= C.RECORD_STATE.SERVER) {
+          this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
+        } else {
+          subscription.synced = true
+        }
       }
 
-      if (timeout > 0 && state && record.state < state) {
-        // TODO (perf): Avoid Timer allocation.
-        subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
-      }
-
-      if (signal) {
-        // TODO (perf): Avoid abort closure allocation.
+      if (subscription.signal) {
         subscription.abort = () => subscriber.error(new utils.AbortError())
-        utils.addAbortListener(signal, subscription.abort)
+        utils.addAbortListener(subscription.signal, subscription.abort)
       }
 
-      if (record.version) {
-        onUpdate(null, subscription)
-      }
+      onUpdate(subscription.record, subscription)
 
       return subscription
     })
