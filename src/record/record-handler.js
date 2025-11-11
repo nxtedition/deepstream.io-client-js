@@ -495,7 +495,7 @@ class RecordHandler {
    */
   getAsync(name, ...args) {
     let path
-    let state = GET_DEFAULTS.state
+    let state = GET_DEFAULTS.state ?? C.RECORD_STATE.CLIENT
 
     let idx = 0
 
@@ -517,16 +517,22 @@ class RecordHandler {
       return { value: this.get(name, ...args), async: true }
     }
 
+    if (typeof state === 'string') {
+      state = C.RECORD_STATE[state.toUpperCase()]
+    }
+
+    if (!Number.isInteger(state) || state < 0) {
+      throw new Error('invalid argument: state')
+    }
+
     const rec = this.getRecord(name)
     try {
-      if (rec.state >= state) {
-        return { value: rec.get(path), async: false }
-      }
+      return rec.state >= state
+        ? { value: rec.get(path), async: false }
+        : { value: this.get(name, ...args), async: true }
     } finally {
       rec.unref()
     }
-
-    return { value: this.get(name, ...args), async: true }
   }
 
   /**
