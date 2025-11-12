@@ -634,8 +634,6 @@ class RecordHandler {
       const subscription = {
         /** @readonly @type {unknown} */
         subscriber,
-        /** @type {Record|null} */
-        record: this.getRecord(name),
         /** @readonly @type {unknown} */
         path,
         /** @readonly @type {number} */
@@ -647,6 +645,8 @@ class RecordHandler {
         /** @readonly @type {number} */
         timeoutValue: timeout,
 
+        /** @type {Record|null} */
+        record: this.getRecord(name),
         /** @type {Timeout|null} */
         timeoutHandle: null,
         /** @type {Function?} */
