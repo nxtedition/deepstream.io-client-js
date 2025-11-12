@@ -682,8 +682,10 @@ class RecordHandler {
       if (sync) {
         this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
       } else {
-        onSync(subscription)
+        subscription.synced = true
       }
+
+      onUpdate(subscription.record, subscription)
     })
   }
 
