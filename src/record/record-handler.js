@@ -35,7 +35,7 @@ const GET2_DEFAULTS = {
 
 function onSync(subscription) {
   subscription.synced = true
-  onUpdate(null, subscription)
+  onUpdate(subscription.record, subscription)
 }
 
 function onUpdate(record, subscription) {
@@ -682,10 +682,8 @@ class RecordHandler {
       if (sync) {
         this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
       } else {
-        subscription.synced = true
+        onSync(subscription)
       }
-
-      onUpdate(subscription.record, subscription)
     })
   }
 
