@@ -45,22 +45,18 @@ function onUpdate(record, subscription) {
 
   if (!subscription.synced || subscription.record.state < subscription.state) {
     if (subscription.timeoutValue > 0) {
-      if (!subscription.timeoutHandle) {
-        subscription.timeoutHandle = timers.setTimeout(
-          onTimeout,
-          subscription.timeoutValue,
-          subscription,
-        )
+      if (!subscription.timeout) {
+        subscription.timeout = timers.setTimeout(onTimeout, subscription.timeoutValue, subscription)
       } else {
-        subscription.timeoutHandle.refresh()
+        subscription.timeout.refresh()
       }
     }
     return
   }
 
-  if (subscription.timeoutHandle) {
-    timers.clearTimeout(subscription.timeoutHandle)
-    subscription.timeoutHandle = null
+  if (subscription.timeout) {
+    timers.clearTimeout(subscription.timeout)
+    subscription.timeout = null
   }
 
   const data = subscription.path
@@ -646,54 +642,50 @@ class RecordHandler {
         timeoutValue: timeout,
 
         /** @type {Record|null} */
-        record: this.getRecord(name),
+        record: null,
         /** @type {Timeout|null} */
-        timeoutHandle: null,
+        timeout: null,
         /** @type {Function?} */
         abort: null,
         /** @type {object|Array} */
         data: kEmpty,
         /** @type {boolean} */
         synced: false,
-
-        unsubscribe() {
-          if (this.timeoutHandle) {
-            timers.clearTimeout(this.timeoutHandle)
-            this.timeoutHandle = null
-          }
-
-          if (this.signal) {
-            utils.removeAbortListener(this.signal, this.abort)
-            this.abort = null
-            this.signal = null
-          }
-
-          if (this.record) {
-            this.record.unsubscribe(onUpdate, this)
-            this.record.unref()
-            this.record = null
-          }
-        },
       }
 
-      if (subscription.record) {
-        subscription.record.subscribe(onUpdate, subscription)
-
-        if (sync && subscription.record.state >= C.RECORD_STATE.SERVER) {
-          this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
-        } else {
-          subscription.synced = true
+      subscriber.add(() => {
+        if (subscription.timeout) {
+          timers.clearTimeout(subscription.timeout)
+          subscription.timeout = null
         }
-      }
+
+        if (subscription.signal) {
+          utils.removeAbortListener(subscription.signal, subscription.abort)
+          subscription.abort = null
+          subscription.signal = null
+        }
+
+        if (subscription.record) {
+          subscription.record.unsubscribe(onUpdate, subscription)
+          subscription.record.unref()
+          subscription.record = null
+        }
+      })
 
       if (subscription.signal) {
         subscription.abort = () => subscriber.error(new utils.AbortError())
         utils.addAbortListener(subscription.signal, subscription.abort)
       }
 
-      onUpdate(subscription.record, subscription)
+      subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
 
-      return subscription
+      if (sync && subscription.record.state >= C.RECORD_STATE.SERVER) {
+        this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
+      } else {
+        subscription.synced = true
+      }
+
+      onUpdate(subscription.record, subscription)
     })
   }
 
