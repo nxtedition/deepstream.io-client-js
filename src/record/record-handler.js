@@ -778,6 +778,7 @@ class RecordHandler {
       throw new Error(`invalid sync type: ${type}`)
     }
 
+    // TODO (fix): timeout?
     setTimeout(() => {
       // Token must be universally unique until deepstream properly separates
       // sync requests from different sockets.
