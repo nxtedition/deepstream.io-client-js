@@ -680,12 +680,11 @@ class RecordHandler {
       subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
 
       if (sync) {
+        // TODO (fix): What about sync timeout?
         this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
       } else {
-        subscription.synced = true
+        onSync(subscription)
       }
-
-      onUpdate(subscription.record, subscription)
     })
   }
 
