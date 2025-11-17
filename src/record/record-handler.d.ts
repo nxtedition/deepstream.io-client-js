@@ -20,7 +20,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   JSON: {
     EMPTY: EmptyObject
     EMPTY_OBJ: EmptyObject
-    EMPTY_ARR: Readonly<unknown[]>
+    EMPTY_ARR: []
   }
 
   connected: boolean
