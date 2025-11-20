@@ -17,6 +17,15 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   STALE: 3
   PROVIDER: 4
 
+  STATE: {
+    VOID: 0
+    CLIENT: 1
+    SERVER: 2
+    STALE: 3
+    PROVIDER: 4
+    [key: string]: number
+  }
+
   JSON: {
     EMPTY: EmptyObject
     EMPTY_OBJ: EmptyObject

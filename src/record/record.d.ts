@@ -75,6 +75,7 @@ export default class Record<Data = unknown> {
     <P extends string | string[]>(path: P): Get<Data, P>
     // without path
     (): Data
+    (path: undefined | string | string[]): unknown
   }
 
   set: {

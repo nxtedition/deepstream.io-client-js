@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import make, { type DeepstreamClient } from './client.js'
-import { expectAssignable, expectError } from 'tsd'
+import { expectAssignable, expectError, expectType } from 'tsd'
 import type { Observable } from 'rxjs'
 
 interface Records extends Record<string, unknown> {
@@ -195,6 +195,11 @@ rec.set('o0.o1', {})
 expectError(rec.update((x) => 'x'))
 expectError(rec.update('o0', (x) => ({ ...x, o1: '22' })))
 
+expectType<string | undefined>(rec.get('o0.o1.o2.o3'))
+expectType<{ o0?: { o1?: { o2?: { o3?: string } } } }>(rec.get())
+const pathOrUndefined: 'o0.01.02.03' | undefined = undefined
+expectType<unknown>(rec.get(pathOrUndefined))
+
 // when with options
 expectAssignable<Promise<typeof rec>>(rec.when())
 expectAssignable<Promise<typeof rec>>(rec.when(2))
@@ -214,3 +219,8 @@ expectAssignable<Promise<void>>(
 )
 expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { timeout: 5000 }))
 expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { state: 2 }))
+
+const state = 'VOID'
+expectType<0>(ds.record.STATE[state])
+const unknownState: string = 'VOID'
+expectType<number>(ds.record.STATE[unknownState])
