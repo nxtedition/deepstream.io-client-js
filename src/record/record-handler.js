@@ -298,18 +298,17 @@ class RecordHandler {
       signalPromise?.catch(noop)
 
       if (this._patching.size) {
-        let promises
+        const promises = []
 
         {
           const patchingPromises = []
           for (const callbacks of this._patching.values()) {
             patchingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
-          promises ??= []
           promises.push(Promise.all(patchingPromises))
         }
 
-        if (timeout) {
+        if (timeout && promises.length) {
           promises.push(
             new Promise((resolve) => {
               const patchingTimeout = timers.setTimeout(() => {
@@ -326,30 +325,28 @@ class RecordHandler {
           )
         }
 
-        if (signalPromise) {
-          promises ??= []
+        if (signalPromise && promises.length) {
           promises.push(signalPromise)
         }
 
-        if (promises) {
+        if (promises.length) {
           await Promise.race(promises)
+          signal?.throwIfAborted()
         }
       }
 
       if (this._updating.size) {
-        let promises
+        const promises = []
 
         {
           const updatingPromises = []
           for (const callbacks of this._updating.values()) {
             updatingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
-          promises ??= []
           promises.push(Promise.all(updatingPromises))
         }
 
-        if (timeout) {
-          promises ??= []
+        if (timeout && promises.length) {
           promises.push(
             new Promise((resolve) => {
               const updatingTimeout = timers.setTimeout(() => {
@@ -366,18 +363,22 @@ class RecordHandler {
           )
         }
 
-        if (promises) {
+        if (signalPromise && promises.length) {
+          promises.push(signalPromise)
+        }
+
+        if (promises.length) {
           await Promise.race(promises)
+          signal?.throwIfAborted()
         }
       }
 
       {
-        const syncPromise = new Promise((resolve) => this._sync(resolve))
+        const promises = []
 
-        let promises
+        promises.push(new Promise((resolve) => this._sync(resolve)))
 
         if (timeout) {
-          promises ??= []
           promises.push(
             new Promise((resolve, reject) => {
               const serverTimeout = timers.setTimeout(() => {
@@ -390,15 +391,12 @@ class RecordHandler {
         }
 
         if (signalPromise) {
-          promises ??= []
           promises.push(signalPromise)
         }
 
-        if (promises) {
-          promises.push(syncPromise)
+        if (promises.length) {
           await Promise.race(promises)
-        } else {
-          await syncPromise
+          signal?.throwIfAborted()
         }
       }
     } finally {
