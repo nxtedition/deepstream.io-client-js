@@ -282,7 +282,7 @@ class RecordHandler {
     // TODO (perf): Slow implementation...
 
     const signal = opts?.signal
-    const timeout = opts?.timeout ?? 60e3
+    const timeout = opts?.timeout ?? 10 * 60e3
 
     let disposers
     try {
