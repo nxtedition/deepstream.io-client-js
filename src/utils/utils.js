@@ -1,6 +1,10 @@
 import xxhash from 'xxhash-wasm'
 
 const NODE_ENV = typeof process !== 'undefined' && process.env && process.env.NODE_ENV
+const HASHER = await xxhash()
+
+// This is a hack to avoid top-level await
+// const HASHER = await xxhash()
 export const isNode = typeof process !== 'undefined' && process.toString() === '[object process]'
 export const isProduction = NODE_ENV === 'production'
 
@@ -177,23 +181,18 @@ export function removeAbortListener(signal, handler) {
   }
 }
 
-// This is a hack to avoid top-level await
-// const HASHER = await xxhash()
-let HASHER
-xxhash().then((hasher) => (HASHER = hasher))
-
 export function h64ToString(str) {
   return HASHER.h64ToString(str)
 }
 
-export function findBigIntPaths(obj, path = "") {
+export function findBigIntPaths(obj, path = '') {
   const paths = []
 
-  if (typeof obj === "bigint") {
+  if (typeof obj === 'bigint') {
     return [path]
   }
 
-  if (typeof obj === "object" && obj !== null) {
+  if (typeof obj === 'object' && obj !== null) {
     for (const key of Object.keys(obj)) {
       paths.push(...findBigIntPaths(obj[key], path ? `${path}.${key}` : key))
     }
