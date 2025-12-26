@@ -10,6 +10,11 @@ import type {
 
 type Lookup<Table, Name> = Name extends keyof Table ? Table[Name] : unknown
 
+type Disposer = {
+  (): void
+  [Symbol.dispose](): void
+}
+
 export default class RecordHandler<Records = Record<string, unknown>> {
   VOID: 0
   CLIENT: 1
@@ -41,7 +46,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
     pattern: string,
     callback: (key: string) => unknown,
     optionsOrRecursive?: ProvideOptions | boolean,
-  ) => void | (() => void)
+  ) => Disposer
 
   sync: (options?: SyncOptions) => Promise<void>
 
@@ -223,6 +228,7 @@ export interface RecordStats {
 export interface ProvideOptions {
   recursive?: boolean
   stringify?: ((input: unknown) => string) | null
+  mode: undefined | null | 'unicast'
 }
 
 export interface SyncOptions {
