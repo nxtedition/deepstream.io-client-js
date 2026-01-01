@@ -1,7 +1,7 @@
 import * as C from '../constants/constants.js'
 import * as messageBuilder from '../message/message-builder.js'
 import * as messageParser from '../message/message-parser.js'
-import MulticastListener from '../utils/multicast-listener.js'
+import LegacyListener from '../utils/legacy-listener.js'
 import UnicastListener from '../utils/unicast-listener.js'
 import EventEmitter from 'component-emitter2'
 import * as rxjs from 'rxjs'
@@ -126,7 +126,7 @@ EventHandler.prototype.provide = function (pattern, callback, options) {
   const listener =
     options.mode?.toLowerCase() === 'unicast'
       ? new UnicastListener(C.TOPIC.EVENT, pattern, callback, this, options)
-      : new MulticastListener(C.TOPIC.EVENT, pattern, callback, this, options)
+      : new LegacyListener(C.TOPIC.EVENT, pattern, callback, this, options)
 
   this._listeners.set(pattern, listener)
   return () => {

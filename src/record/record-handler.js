@@ -1,5 +1,5 @@
 import Record from './record.js'
-import MulticastListener from '../utils/multicast-listener.js'
+import LegacyListener from '../utils/legacy-listener.js'
 import UnicastListener from '../utils/unicast-listener.js'
 import * as C from '../constants/constants.js'
 import * as rxjs from 'rxjs'
@@ -261,7 +261,7 @@ class RecordHandler {
     const listener =
       options.mode?.toLowerCase() === 'unicast'
         ? new UnicastListener(C.TOPIC.RECORD, pattern, callback, this, options)
-        : new MulticastListener(C.TOPIC.RECORD, pattern, callback, this, options)
+        : new LegacyListener(C.TOPIC.RECORD, pattern, callback, this, options)
 
     this._stats.listeners += 1
     this._listeners.set(pattern, listener)

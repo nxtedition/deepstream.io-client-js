@@ -1,6 +1,6 @@
 import * as rxjs from 'rxjs'
 import * as C from '../constants/constants.js'
-import { h64ToString, findBigIntPaths } from '../utils/utils.js'
+import { h64ToString, findBigIntPaths } from './utils.js'
 
 export default class Listener {
   constructor(topic, pattern, callback, handler, { recursive = false, stringify = null } = {}) {
