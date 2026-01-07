@@ -85,10 +85,17 @@ function onTimeout(subscription) {
   subscription.subscriber.error(
     Object.assign(
       new Error(
-        `timeout state: ${subscription.record.name} [${current}<${expected}:${subscription.synced}]`,
+        !subscription.synced
+          ? `timeout sync: ${subscription.record.name}`
+          : `timeout state: ${subscription.record.name} [${current}<${expected}]`,
       ),
       {
         code: 'ETIMEDOUT',
+        timeout: subscription.timeoutValue,
+        expected,
+        current,
+        synced: subscription.synced,
+        name: subscription.record.name,
       },
     ),
   )
