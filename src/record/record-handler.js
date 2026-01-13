@@ -128,7 +128,7 @@ class RecordHandler {
     }
 
     this._syncQueue = []
-    this._syncMap = {}
+    this._syncMap = new Map()
 
     this.set = this.set.bind(this)
     this.get = this.get.bind(this)
@@ -708,8 +708,8 @@ class RecordHandler {
         return true
       }
 
-      const sync = this._syncMap[token]
-      delete this._syncMap[token]
+      const sync = this._syncMap.get(token)
+      this._syncMap.delete(token)
 
       if (!sync) {
         return true
@@ -752,10 +752,10 @@ class RecordHandler {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
       }
 
-      const syncMap = {}
-      for (const sync of Object.values(this._syncMap)) {
+      const syncMap = new Map()
+      for (const sync of this._syncMap.values()) {
         const token = xuid()
-        syncMap[token] = sync
+        syncMap.set(token, sync)
         this._connection.sendMsg(
           C.TOPIC.RECORD,
           C.ACTIONS.SYNC,
@@ -790,7 +790,7 @@ class RecordHandler {
       const token = xuid()
       const queue = this._syncQueue.splice(0)
 
-      this._syncMap[token] = { queue, type }
+      this._syncMap.set(token, { queue, type })
       this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, type ? [token, type] : [token])
     }, 1)
   }
