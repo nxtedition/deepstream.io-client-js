@@ -684,7 +684,8 @@ class RecordHandler {
         utils.addAbortListener(subscription.signal, subscription.abort)
       }
 
-      subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
+      subscription.record = this.getRecord(name)
+      subscription.record.subscribe(onUpdate, subscription)
 
       if (sync) {
         this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
