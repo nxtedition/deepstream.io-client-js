@@ -561,78 +561,78 @@ class RecordHandler {
    * @returns {rxjs.Observable}
    */
   _observe(defaults, name, ...args) {
+    let path
+    let state = defaults?.state ?? C.RECORD_STATE.CLIENT
+    let signal = null
+    let timeout = defaults?.timeout ?? 0
+    let dataOnly = defaults?.dataOnly ?? false
+    let sync = defaults?.sync ?? false
+
+    let idx = 0
+
+    if (
+      idx < args.length &&
+      (args[idx] == null ||
+        typeof args[idx] === 'string' ||
+        Array.isArray(args[idx]) ||
+        typeof args[idx] === 'function')
+    ) {
+      path = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
+      state = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
+      const options = args[idx++] || {}
+
+      if (options.signal !== undefined) {
+        signal = options.signal
+      }
+
+      if (options.timeout !== undefined) {
+        timeout = options.timeout
+      }
+
+      if (options.path !== undefined) {
+        path = options.path
+      }
+
+      if (options.state !== undefined) {
+        state = options.state
+      }
+
+      if (options.dataOnly !== undefined) {
+        dataOnly = options.dataOnly
+      }
+
+      if (options.sync !== undefined) {
+        sync = options.sync
+      }
+    }
+
+    if (typeof state === 'string') {
+      state = C.RECORD_STATE[state.toUpperCase()]
+    }
+
+    if (!Number.isInteger(state) || state < 0) {
+      throw new Error('invalid argument: state')
+    }
+
+    if (!Number.isInteger(timeout) || timeout < 0) {
+      throw new Error('invalid argument: timeout')
+    }
+
+    if (typeof dataOnly !== 'boolean') {
+      throw new Error('invalid argument: dataOnly')
+    }
+
+    if (typeof sync !== 'boolean') {
+      throw new Error('invalid argument: sync')
+    }
+
     return new rxjs.Observable((subscriber) => {
-      let path
-      let state = defaults?.state ?? C.RECORD_STATE.CLIENT
-      let signal = null
-      let timeout = defaults?.timeout ?? 0
-      let dataOnly = defaults?.dataOnly ?? false
-      let sync = defaults?.sync ?? false
-
-      let idx = 0
-
-      if (
-        idx < args.length &&
-        (args[idx] == null ||
-          typeof args[idx] === 'string' ||
-          Array.isArray(args[idx]) ||
-          typeof args[idx] === 'function')
-      ) {
-        path = args[idx++]
-      }
-
-      if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
-        state = args[idx++]
-      }
-
-      if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
-        const options = args[idx++] || {}
-
-        if (options.signal !== undefined) {
-          signal = options.signal
-        }
-
-        if (options.timeout !== undefined) {
-          timeout = options.timeout
-        }
-
-        if (options.path !== undefined) {
-          path = options.path
-        }
-
-        if (options.state !== undefined) {
-          state = options.state
-        }
-
-        if (options.dataOnly !== undefined) {
-          dataOnly = options.dataOnly
-        }
-
-        if (options.sync !== undefined) {
-          sync = options.sync
-        }
-      }
-
-      if (typeof state === 'string') {
-        state = C.RECORD_STATE[state.toUpperCase()]
-      }
-
-      if (!Number.isInteger(state) || state < 0) {
-        throw new Error('invalid argument: state')
-      }
-
-      if (!Number.isInteger(timeout) || timeout < 0) {
-        throw new Error('invalid argument: timeout')
-      }
-
-      if (typeof dataOnly !== 'boolean') {
-        throw new Error('invalid argument: dataOnly')
-      }
-
-      if (typeof sync !== 'boolean') {
-        throw new Error('invalid argument: sync')
-      }
-
       // TODO (perf): Make a class
       const subscription = {
         /** @readonly @type {unknown} */
