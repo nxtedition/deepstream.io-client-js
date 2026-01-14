@@ -35,7 +35,7 @@ const GET2_DEFAULTS = {
 
 function onSync(subscription) {
   subscription.synced = true
-  onUpdate(subscription.record, subscription)
+  onUpdate(null, subscription)
 }
 
 function onUpdate(record, subscription) {

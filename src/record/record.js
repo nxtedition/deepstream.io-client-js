@@ -581,7 +581,7 @@ class Record {
       for (let n = 0; n < len; n++) {
         this._emittingIndex = n
         // TODO (fix): What if this throws?
-        arr[n].onUpdate(this)
+        arr[n].onUpdate(this, arr[n])
       }
     } finally {
       this._emittingArr = null
