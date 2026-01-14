@@ -228,13 +228,18 @@ class RecordHandler {
    * @returns {Record}
    */
   getRecord(name) {
-    invariant(
-      typeof name === 'string' &&
-        name.length > 0 &&
-        name !== '[object Object]' &&
-        name.length <= 4096,
-      `invalid name ${name}`,
-    )
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument: name')
+    }
+
+    if (name.startsWith('null') || name.startsWith('undefined') || name === '[object Object]') {
+      this._client._$onError(
+        C.TOPIC.RECORD,
+        C.EVENT.USER_ERROR,
+        'name should not start with null or undefined',
+        name,
+      )
+    }
 
     let record = this._records.get(name)
 
@@ -658,6 +663,9 @@ class RecordHandler {
         data: kEmpty,
         /** @type {boolean} */
         synced: false,
+
+        index: -1,
+        onUpdate,
       }
 
       subscriber.add(() => {
@@ -673,7 +681,7 @@ class RecordHandler {
         }
 
         if (subscription.record) {
-          subscription.record.unsubscribe(onUpdate, subscription)
+          subscription.record._unobserve(subscription)
           subscription.record.unref()
           subscription.record = null
         }
@@ -685,7 +693,7 @@ class RecordHandler {
       }
 
       subscription.record = this.getRecord(name)
-      subscription.record.subscribe(onUpdate, subscription)
+      subscription.record._observe(subscription)
 
       if (sync) {
         this._sync(onSync, sync, subscription)
