@@ -228,13 +228,18 @@ class RecordHandler {
    * @returns {Record}
    */
   getRecord(name) {
-    invariant(
-      typeof name === 'string' &&
-        name.length > 0 &&
-        name !== '[object Object]' &&
-        name.length <= 4096,
-      `invalid name ${name}`,
-    )
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument: name')
+    }
+
+    if (name.startsWith('null') || name.startsWith('undefined') || name === '[object Object]') {
+      this._client._$onError(
+        C.TOPIC.RECORD,
+        C.EVENT.USER_ERROR,
+        'name should not start with null or undefined',
+        name,
+      )
+    }
 
     let record = this._records.get(name)
 
