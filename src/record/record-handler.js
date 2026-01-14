@@ -658,6 +658,9 @@ class RecordHandler {
         data: kEmpty,
         /** @type {boolean} */
         synced: false,
+
+        index: -1,
+        onUpdate,
       }
 
       subscriber.add(() => {
@@ -673,7 +676,7 @@ class RecordHandler {
         }
 
         if (subscription.record) {
-          subscription.record.unsubscribe(onUpdate, subscription)
+          subscription.record._unobserve(subscription)
           subscription.record.unref()
           subscription.record = null
         }
@@ -685,7 +688,7 @@ class RecordHandler {
       }
 
       subscription.record = this.getRecord(name)
-      subscription.record.subscribe(onUpdate, subscription)
+      subscription.record._observe(subscription)
 
       if (sync) {
         this._sync(onSync, sync, subscription)
