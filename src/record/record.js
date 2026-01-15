@@ -16,7 +16,7 @@ class Record {
     this._handler = handler
     this._name = name
     this._version = ''
-    this._data = jsonPath.EMPTY
+    this._data = jsonPath.EMPTY_OBJ
     this._state = C.RECORD_STATE.VOID
     this._refs = 0
     this._subscriptions = []
