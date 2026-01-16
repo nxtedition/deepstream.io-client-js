@@ -94,6 +94,34 @@ function onTimeout(subscription) {
   )
 }
 
+class Subscription {
+  /** @type {unknown} */
+  subscriber = null
+  /** @type {unknown} */
+  path = null
+  /** @type {number} */
+  state = 0
+  /** @type {AbortSignal|null} */
+  signal = null
+  /** @type {boolean} */
+  dataOnly = false
+
+  /** @type {Record|null} */
+  record = null
+  /** @type {Timeout|null} */
+  timeout = null
+  /** @type {Function?} */
+  abort = null
+  /** @type {object|Array} */
+  data = kEmpty
+  /** @type {boolean} */
+  synced = false
+
+  index = -1
+
+  onUpdate = onUpdate
+}
+
 class RecordHandler {
   constructor(options, connection, client) {
     this.JSON = jsonPath
@@ -636,33 +664,13 @@ class RecordHandler {
         return
       }
 
-      // TODO (perf): Make a class
-      const subscription = {
-        /** @readonly @type {unknown} */
-        subscriber,
-        /** @readonly @type {unknown} */
-        path,
-        /** @readonly @type {number} */
-        state,
-        /** @type {AbortSignal|null} */
-        signal,
-        /** @readonly @type {boolean} */
-        dataOnly,
+      const subscription = new Subscription()
 
-        /** @type {Record|null} */
-        record: null,
-        /** @type {Timeout|null} */
-        timeout: null,
-        /** @type {Function?} */
-        abort: null,
-        /** @type {object|Array} */
-        data: kEmpty,
-        /** @type {boolean} */
-        synced: false,
-
-        index: -1,
-        onUpdate,
-      }
+      subscription.subscriber = subscriber
+      subscription.path = path
+      subscription.state = state
+      subscription.signal = signal
+      subscription.dataOnly = dataOnly
 
       subscriber.add(() => {
         if (subscription.timeout) {
