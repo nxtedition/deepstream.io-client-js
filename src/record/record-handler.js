@@ -631,6 +631,11 @@ class RecordHandler {
     }
 
     return new rxjs.Observable((subscriber) => {
+      if (signal?.aborted) {
+        subscriber.error(new utils.AbortError())
+        return
+      }
+
       // TODO (perf): Make a class
       const subscription = {
         /** @readonly @type {unknown} */
