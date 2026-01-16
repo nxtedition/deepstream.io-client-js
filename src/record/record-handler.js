@@ -44,17 +44,10 @@ function onUpdate(record, subscription) {
   }
 
   if (!subscription.synced || subscription.record.state < subscription.state) {
-    if (subscription.timeoutValue > 0) {
-      if (!subscription.timeout) {
-        subscription.timeout = timers.setTimeout(onTimeout, subscription.timeoutValue, subscription)
-      } else {
-        subscription.timeout.refresh()
-      }
-    }
     return
   }
 
-  if (subscription.timeout) {
+  if (subscription.timeout != null) {
     timers.clearTimeout(subscription.timeout)
     subscription.timeout = null
   }
@@ -650,8 +643,6 @@ class RecordHandler {
         signal,
         /** @readonly @type {boolean} */
         dataOnly,
-        /** @readonly @type {number} */
-        timeoutValue: timeout,
 
         /** @type {Record|null} */
         record: null,
@@ -699,6 +690,10 @@ class RecordHandler {
         this._sync(onSync, sync, subscription)
       } else {
         onSync(subscription)
+      }
+
+      if (timeout > 0 && (!subscription.synced || subscription.record.state < subscription.state)) {
+        subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
       }
     })
   }
