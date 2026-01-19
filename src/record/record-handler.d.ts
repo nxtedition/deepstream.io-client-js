@@ -113,40 +113,6 @@ export default class RecordHandler<Records = Record<string, unknown>> {
     ): Observable<Get<Lookup<Records, Name>, Path>>
   }
 
-  get: {
-    <Name extends string>(name: Name, options: ObserveOptions): Promise<Lookup<Records, Name>>
-
-    <Name extends string, Path extends string | string[]>(
-      name: Name,
-      options: ObserveOptionsWithPath<Path>,
-    ): Promise<Get<Lookup<Records, Name>, Path>>
-
-    <Name extends string>(
-      name: Name,
-      state?: number,
-      options?: ObserveOptions,
-    ): Promise<Lookup<Records, Name>>
-
-    <Name extends string, Path extends string | string[]>(
-      name: Name,
-      state?: number,
-      options?: ObserveOptionsWithPath<Path>,
-    ): Promise<Get<Lookup<Records, Name>, Path>>
-
-    <Name extends string, Path extends string | string[]>(
-      name: Name,
-      path: Path,
-      options?: ObserveOptionsWithPath<Path>,
-    ): Promise<Get<Lookup<Records, Name>, Path>>
-
-    <Name extends string, Path extends string | string[]>(
-      name: Name,
-      path: Path,
-      state?: number,
-      options?: ObserveOptionsWithPath<Path>,
-    ): Promise<Get<Lookup<Records, Name>, Path>>
-  }
-
   observe2: {
     <Name extends string>(
       name: Name,
@@ -207,6 +173,107 @@ export default class RecordHandler<Records = Record<string, unknown>> {
       state?: number,
       options?: ObserveOptionsWithPath<Path>,
     ): Observable<{
+      name: string
+      version: string
+      state: number
+      data: Get<Lookup<Records, Name>, Path>
+    }>
+  }
+
+  get: {
+    <Name extends string>(name: Name, options: ObserveOptions): Promise<Lookup<Records, Name>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      options: ObserveOptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+
+    <Name extends string>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptions,
+    ): Promise<Lookup<Records, Name>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Promise<Get<Lookup<Records, Name>, Path>>
+  }
+
+  get2: {
+    <Name extends string>(
+      name: Name,
+      options: ObserveOptions,
+    ): Promise<{
+      name: string
+      version: string
+      state: number
+      data: Lookup<Records, Name>
+    }>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      options: ObserveOptionsWithPath<Path>,
+    ): Promise<{
+      name: string
+      version: string
+      state: number
+      data: Get<Lookup<Records, Name>, Path>
+    }>
+
+    <Name extends string>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptions,
+    ): Promise<{
+      name: string
+      version: string
+      state: number
+      data: Lookup<Records, Name>
+    }>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Promise<{
+      name: string
+      version: string
+      state: number
+      data: Get<Lookup<Records, Name>, Path>
+    }>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Promise<{
+      name: string
+      version: string
+      state: number
+      data: Get<Lookup<Records, Name>, Path>
+    }>
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      state?: number,
+      options?: ObserveOptionsWithPath<Path>,
+    ): Promise<{
       name: string
       version: string
       state: number
