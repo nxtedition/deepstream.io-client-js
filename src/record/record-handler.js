@@ -184,13 +184,9 @@ class RecordHandler {
   _onPruning(rec, value) {
     if (value) {
       this._stats.pruning += 1
-    } else {
-      this._stats.pruning -= 1
-    }
-
-    if (value) {
       this._pruning.add(rec)
     } else {
+      this._stats.pruning -= 1
       this._pruning.delete(rec)
     }
   }
