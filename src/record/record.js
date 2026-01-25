@@ -141,6 +141,11 @@ class Record {
       throw new Error('already observing')
     }
 
+    if (this._emittingArr === this._observers) {
+      // TODO (perf): Shift from start if emitting?
+      this._observers = this._observers.slice()
+    }
+
     subscription.index = this._observers.push(subscription) - 1
   }
 
