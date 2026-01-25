@@ -259,15 +259,16 @@ class RecordHandler {
     }
 
     let record = this._records.get(name)
-
     if (!record) {
       record = new Record(name, this)
       this._stats.records += 1
       this._stats.created += 1
       this._records.set(name, record)
+    } else {
+      record.ref()
     }
 
-    return record.ref()
+    return record
   }
 
   provide(pattern, callback, options) {

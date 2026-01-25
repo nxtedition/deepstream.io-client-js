@@ -18,7 +18,7 @@ class Record {
     this._version = ''
     this._data = jsonPath.EMPTY_OBJ
     this._state = C.RECORD_STATE.VOID
-    this._refs = 0
+    this._refs = 1
     this._subscriptions = []
 
     /** @type {Array|null} */
