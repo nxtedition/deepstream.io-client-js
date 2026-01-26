@@ -172,7 +172,7 @@ class RecordHandler {
       }
 
       this._stats.pruning -= pruning.size
-      this._stats.records -= pruning.size
+      this._stats.records = this._records.size
       this._stats.destroyed += pruning.size
 
       this._pruningTimeout.refresh()
@@ -261,9 +261,9 @@ class RecordHandler {
     let record = this._records.get(name)
     if (!record) {
       record = new Record(name, this)
-      this._stats.records += 1
-      this._stats.created += 1
       this._records.set(name, record)
+      this._stats.created += 1
+      this._stats.records = this._records.size
     } else {
       record.ref()
     }
