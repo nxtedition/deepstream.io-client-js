@@ -167,8 +167,18 @@ class RecordHandler {
       this._pruning = new Set()
 
       for (const rec of pruning) {
-        rec._$dispose()
-        this._records.delete(rec.name)
+        try {
+          rec._$dispose()
+          if (!this._records.delete(rec.name)) {
+            this._client._$onError(
+              C.TOPIC.RECORD,
+              C.EVENT.INTERNAL_ERROR,
+              `failed to delete pruned record: ${rec.name}`,
+            )
+          }
+        } catch (err) {
+          this._client._$onError(C.TOPIC.RECORD, C.EVENT.INTERNAL_ERROR, err)
+        }
       }
 
       this._stats.pruning -= pruning.size
