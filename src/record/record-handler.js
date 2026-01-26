@@ -181,9 +181,9 @@ class RecordHandler {
         }
       }
 
-      this._stats.pruning -= pruning.size
-      this._stats.records = this._records.size
       this._stats.destroyed += pruning.size
+      this._stats.pruning = this._pruning.size
+      this._stats.records = this._records.size
 
       this._pruningTimeout.refresh()
     }
@@ -193,12 +193,11 @@ class RecordHandler {
 
   _onPruning(rec, value) {
     if (value) {
-      this._stats.pruning += 1
       this._pruning.add(rec)
     } else {
-      this._stats.pruning -= 1
       this._pruning.delete(rec)
     }
+    this._stats.pruning = this._pruning.size
   }
 
   _onUpdating(rec, value) {
@@ -221,17 +220,15 @@ class RecordHandler {
 
   _onPatching(rec, value) {
     if (value) {
-      this._stats.patching += 1
       this._patching.set(rec, [])
     } else {
-      this._stats.patching -= 1
-
       const callbacks = this._patching.get(rec)
       this._patching.delete(rec)
       for (const callback of callbacks) {
         callback()
       }
     }
+    this._stats.patching = this._patching.size
   }
 
   get connected() {
