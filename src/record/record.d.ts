@@ -18,9 +18,9 @@ export type GettablePossibleEmpty<Data> = keyof Data extends never
       Data
     : SingleKeyObject<Data> extends never
       ? // There are more than one property in Data, and some of them are
-        // required. That means that the user must always check for the empty
-        // object case.
-        Data | EmptyObject
+          // required. That means that the user must always check for the empty
+          // object case.
+          Data | EmptyObject
       : // There is exactly one property in Data, and it is required. In this
         // particular case, we can safely use Data as the "empty" type, but
         // with the single property turned optional.
@@ -45,6 +45,7 @@ export interface UpdateOptions {
 }
 
 export interface ObserveOptions {
+  key?: string
   signal?: AbortSignal
   timeout?: number
   state?: number
