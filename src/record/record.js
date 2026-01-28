@@ -257,15 +257,25 @@ class Record {
         return
       }
 
-      let timeoutHandle
-      let done = false
+      const context = {
+        name: 'when',
+        /** @type {timers.Timeout|NodeJS.Timeout|null} */
+        timeout: null,
+        /** @type {AbortSignal|null} */
+        signal: null,
+        done: false,
+      }
+
+      const onAbort = (e) => {
+        onDone(signal.reason ?? new utils.AbortError())
+      }
 
       const onDone = (err) => {
-        if (done) {
+        if (context.done) {
           return
         }
 
-        done = true
+        context.done = true
 
         if (err) {
           reject(err)
@@ -276,12 +286,15 @@ class Record {
         this.unref()
         this.unsubscribe(onUpdate)
 
-        if (timeoutHandle) {
-          timers.clearTimeout(timeoutHandle)
-          timeoutHandle = null
+        if (context.timeout != null) {
+          timers.clearTimeout(context.timeout)
+          context.timeout = null
         }
 
-        signal?.removeEventListener('abort', onAbort)
+        if (context.signal != null) {
+          context.signal.removeEventListener('abort', onAbort)
+          context.signal = null
+        }
       }
 
       const onUpdate = () => {
@@ -290,14 +303,8 @@ class Record {
         }
       }
 
-      const onAbort = signal
-        ? () => {
-            onDone(signal.reason ?? new utils.AbortError())
-          }
-        : null
-
       if (timeout > 0) {
-        timeoutHandle = timers.setTimeout(() => {
+        context.timeout = timers.setTimeout(() => {
           const expected = C.RECORD_STATE_NAME[state]
           const current = C.RECORD_STATE_NAME[this._state]
 
@@ -309,10 +316,13 @@ class Record {
         }, timeout)
       }
 
-      signal?.addEventListener('abort', onAbort)
+      if (signal) {
+        context.signal = signal
+        signal?.addEventListener('abort', onAbort)
+      }
 
       this.ref()
-      this.subscribe(onUpdate)
+      this.subscribe(onUpdate, context)
     })
   }
 
