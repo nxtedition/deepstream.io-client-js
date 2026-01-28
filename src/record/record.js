@@ -257,6 +257,7 @@ class Record {
     const signal = optionsOrNil?.signal
     const state = stateOrNil ?? C.RECORD_STATE.SERVER
     const timeout = optionsOrNil?.timeout ?? 2 * 60e3
+    const key = optionsOrNil?.key ?? 'when'
 
     if (signal?.aborted) {
       return Promise.reject(signal.reason || new utils.AbortError())
@@ -272,13 +273,21 @@ class Record {
         return
       }
 
-      const context = {
-        name: 'when',
+      const subscription = {
+        key,
         /** @type {timers.Timeout|NodeJS.Timeout|null} */
         timeout: null,
         /** @type {AbortSignal|null} */
         signal: null,
         done: false,
+
+        state,
+        index: -1,
+        onUpdate(record, subscription) {
+          if (record._state >= subscription.state) {
+            onDone(null)
+          }
+        },
       }
 
       const onAbort = (e) => {
@@ -286,11 +295,11 @@ class Record {
       }
 
       const onDone = (err) => {
-        if (context.done) {
+        if (subscription.done) {
           return
         }
 
-        context.done = true
+        subscription.done = true
 
         if (err) {
           reject(err)
@@ -299,27 +308,21 @@ class Record {
         }
 
         this.unref()
-        this.unsubscribe(onUpdate)
+        this._unobserve(subscription)
 
-        if (context.timeout != null) {
-          timers.clearTimeout(context.timeout)
-          context.timeout = null
+        if (subscription.timeout != null) {
+          timers.clearTimeout(subscription.timeout)
+          subscription.timeout = null
         }
 
-        if (context.signal != null) {
-          context.signal.removeEventListener('abort', onAbort)
-          context.signal = null
-        }
-      }
-
-      const onUpdate = () => {
-        if (this._state >= state) {
-          onDone(null)
+        if (subscription.signal != null) {
+          subscription.signal.removeEventListener('abort', onAbort)
+          subscription.signal = null
         }
       }
 
       if (timeout > 0) {
-        context.timeout = timers.setTimeout(() => {
+        subscription.timeout = timers.setTimeout(() => {
           const expected = C.RECORD_STATE_NAME[state]
           const current = C.RECORD_STATE_NAME[this._state]
 
@@ -332,12 +335,12 @@ class Record {
       }
 
       if (signal) {
-        context.signal = signal
+        subscription.signal = signal
         signal?.addEventListener('abort', onAbort)
       }
 
       this.ref()
-      this.subscribe(onUpdate, context)
+      this._observe(subscription)
     })
   }
 
