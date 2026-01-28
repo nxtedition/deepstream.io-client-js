@@ -96,6 +96,8 @@ function onTimeout(subscription) {
 
 class Subscription {
   /** @type {unknown} */
+  key = null
+  /** @type {unknown} */
   subscriber = null
   /** @type {unknown} */
   path = null
@@ -597,6 +599,7 @@ class RecordHandler {
     let timeout = defaults?.timeout ?? 0
     let dataOnly = defaults?.dataOnly ?? false
     let sync = defaults?.sync ?? false
+    let key
 
     let idx = 0
 
@@ -640,6 +643,10 @@ class RecordHandler {
       if (options.sync !== undefined) {
         sync = options.sync
       }
+
+      if (options.key !== undefined) {
+        key = options.key
+      }
     }
 
     if (typeof state === 'string') {
@@ -670,6 +677,7 @@ class RecordHandler {
 
       const subscription = new Subscription()
 
+      subscription.key = key
       subscription.subscriber = subscriber
       subscription.path = path
       subscription.state = state
