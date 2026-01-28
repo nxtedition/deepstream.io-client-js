@@ -19,14 +19,17 @@ class Record {
     this._data = jsonPath.EMPTY_OBJ
     this._state = C.RECORD_STATE.VOID
     this._refs = 1
-    this._subscriptions = []
+
+    /** @type {Array|null} */
+    this._subscriptions = null
 
     /** @type {Array|null} */
     this._emittingArr = null
     /** @type {number} */
     this._emittingIndex = -1
 
-    this._observers = []
+    /** @type {Array|null} */
+    this._observers = null
 
     /** @type Map? */ this._updating = null
     /** @type Array? */ this._patching = null
@@ -94,6 +97,8 @@ class Record {
    * @returns {Record}
    */
   subscribe(fn, opaque = null) {
+    this._subscriptions ??= []
+
     if (this._emittingArr == this._subscriptions) {
       this._subscriptions = this._subscriptions.slice()
     }
@@ -110,6 +115,10 @@ class Record {
    * @returns {Record}
    */
   unsubscribe(fn, opaque = null) {
+    if (!this._subscriptions) {
+      return this
+    }
+
     if (this._emittingArr == this._subscriptions) {
       this._subscriptions = this._subscriptions.slice()
     }
@@ -137,6 +146,8 @@ class Record {
    * @param {{ index: number, onUpdate: (Record) => void}} subscription
    */
   _observe(subscription) {
+    this._observers ??= []
+
     if (subscription.index != null && subscription.index !== -1) {
       throw new Error('already observing')
     }
@@ -153,6 +164,10 @@ class Record {
    * @param {{ index: number, onUpdate: (Record) => void}} subscription
    */
   _unobserve(subscription) {
+    if (!this._observers) {
+      return this
+    }
+
     if (subscription.index == null || subscription.index === -1) {
       throw new Error('not observing')
     }
