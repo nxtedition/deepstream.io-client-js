@@ -258,8 +258,15 @@ class Record {
       }
 
       let timeoutHandle
+      let done = false
 
       const onDone = (err) => {
+        if (done) {
+          return
+        }
+
+        done = true
+
         if (err) {
           reject(err)
         } else {
