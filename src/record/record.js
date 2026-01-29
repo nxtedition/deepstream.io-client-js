@@ -598,34 +598,38 @@ class Record {
       throw new Error('cannot reenter emitUpdate')
     }
 
-    try {
-      const arr = this._subscriptions
-      const len = arr.length
+    if (this._subscriptions != null) {
+      try {
+        const arr = this._subscriptions
+        const len = arr.length
 
-      this._emittingArr = arr
-      for (let n = 0; n < len; n += 2) {
-        this._emittingIndex = n
-        // TODO (fix): What if this throws?
-        arr[n + 0](this, arr[n + 1])
+        this._emittingArr = arr
+        for (let n = 0; n < len; n += 2) {
+          this._emittingIndex = n
+          // TODO (fix): What if this throws?
+          arr[n + 0](this, arr[n + 1])
+        }
+      } finally {
+        this._emittingArr = null
+        this._emittingIndex = -1
       }
-    } finally {
-      this._emittingArr = null
-      this._emittingIndex = -1
     }
 
-    try {
-      const arr = this._observers
-      const len = arr.length
+    if (this._observers != null) {
+      try {
+        const arr = this._observers
+        const len = arr.length
 
-      this._emittingArr = arr
-      for (let n = 0; n < len; n++) {
-        this._emittingIndex = n
-        // TODO (fix): What if this throws?
-        arr[n].onUpdate(this, arr[n])
+        this._emittingArr = arr
+        for (let n = 0; n < len; n++) {
+          this._emittingIndex = n
+          // TODO (fix): What if this throws?
+          arr[n].onUpdate(this, arr[n])
+        }
+      } finally {
+        this._emittingArr = null
+        this._emittingIndex = -1
       }
-    } finally {
-      this._emittingArr = null
-      this._emittingIndex = -1
     }
 
     this._handler._client.emit('recordUpdated', this)
