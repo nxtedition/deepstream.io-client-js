@@ -1,12 +1,6 @@
 import type { Observable } from 'rxjs'
 import type DsRecord from './record.js'
-import type {
-  EmptyObject,
-  Get,
-  UpdateOptions,
-  ObserveOptions,
-  ObserveOptionsWithPath,
-} from './record.js'
+import type { Get, UpdateOptions, ObserveOptions, ObserveOptionsWithPath } from './record.js'
 
 type Lookup<Table, Name> = Name extends keyof Table ? Table[Name] : unknown
 
@@ -32,8 +26,8 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   }
 
   JSON: {
-    EMPTY: EmptyObject
-    EMPTY_OBJ: EmptyObject
+    EMPTY: Record<string, unknown>
+    EMPTY_OBJ: Record<string, unknown>
     EMPTY_ARR: []
   }
 
@@ -52,7 +46,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
 
   set: {
     // without path:
-    <Name extends string>(name: Name, data: Lookup<Records, Name> | EmptyObject): void
+    <Name extends string>(name: Name, data: Lookup<Records, Name>): void
 
     // with path:
     <Name extends string, Path extends string | string[]>(
@@ -67,7 +61,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   update: {
     <Name extends string>(
       name: Name,
-      updater: (data: Lookup<Records, Name>) => Lookup<Records, Name> | EmptyObject,
+      updater: (data: Lookup<Records, Name>) => Lookup<Records, Name>,
       options?: UpdateOptions,
     ): Promise<void>
 

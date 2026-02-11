@@ -2,6 +2,7 @@
 import make, { type DeepstreamClient } from './client.js'
 import { expectAssignable, expectError, expectType } from 'tsd'
 import type { Observable } from 'rxjs'
+import type { EmptyObject } from 'type-fest'
 
 interface Records extends Record<string, unknown> {
   o: {
@@ -22,6 +23,11 @@ interface Records extends Record<string, unknown> {
       }
     }
   }
+  possiblyEmpty:
+    | {
+        pe1: string
+      }
+    | EmptyObject
   c: Circular
   m: {
     m1: string
@@ -62,7 +68,7 @@ expectAssignable<{ n0?: { n1: { n2: { n3: string } } } } | undefined>(await ds.r
 expectAssignable<{ n1: { n2: { n3: string } } } | undefined>(await ds.record.get('n', 'n0'))
 
 // set withouth path
-ds.record.set('n', {}) // empty should always work
+ds.record.set('possiblyEmpty', {}) // empty should always work
 ds.record.set('n', { n0: { n1: { n2: { n3: 'test' } } } })
 expectError(ds.record.set('n', { n0: {} })) // nested props are required
 
