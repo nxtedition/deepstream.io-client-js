@@ -25,7 +25,7 @@ export default class RpcHandler<
       ReturnValue extends Name extends keyof Methods ? Methods[Name][1] : unknown,
     >(
       name: Name,
-      args: Args,
+      args?: Args,
     ): Promise<ReturnValue>
     <
       Name extends keyof Methods | string,
@@ -33,7 +33,7 @@ export default class RpcHandler<
       ReturnValue extends Name extends keyof Methods ? Methods[Name][1] : unknown,
     >(
       name: Name,
-      args: Args,
+      args: Args | undefined,
       callback: (error: unknown, response: ReturnValue) => void,
     ): void
   }
