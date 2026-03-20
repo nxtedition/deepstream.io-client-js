@@ -109,6 +109,7 @@ expectAssignable<string>(await ds.record.get('p', 'p1', { signal: new AbortContr
 expectAssignable<string>(await ds.record.get('p', { path: 'p1' }))
 expectAssignable<string | undefined>(await ds.record.get('p', 'p2'))
 expectAssignable<unknown>(await ds.record.get('p', 'x1'))
+expectAssignable<string | undefined>(await ds.record.get('possiblyEmpty', 'pe1'))
 
 // observe with options
 expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
