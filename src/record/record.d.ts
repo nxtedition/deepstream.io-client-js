@@ -7,7 +7,7 @@ type RemoveSymbolKeys<T> = {
   [K in keyof T as K extends symbol ? never : K]: T[K]
 }
 export type Get<BaseType, Path extends string | readonly string[]> = _Get<
-  AllUnionFields<RemoveSymbolKeys<BaseType>>,
+  RemoveSymbolKeys<AllUnionFields<BaseType>>,
   Path
 >
 
