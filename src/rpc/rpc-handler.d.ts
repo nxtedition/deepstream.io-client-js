@@ -10,8 +10,11 @@ export default class RpcHandler<
 
   provide: <Name extends keyof Methods>(
     name: Name,
-    callback: (args: Methods[Name][0], response: RpcResponse<Methods[Name][1]>) => void,
-  ) => UnprovideFn
+    callback: (
+      args: Methods[Name][0],
+      response: RpcResponse<Methods[Name][1]>,
+    ) => Methods[Name][1] | Promise<Methods[Name][1]> | void,
+  ) => UnprovideFn | void
 
   unprovide: <Name extends keyof Methods>(name: Name) => void
 

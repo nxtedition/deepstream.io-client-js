@@ -87,8 +87,8 @@ export interface DeepstreamClient<
   rpc: RpcHandler<Methods>
   record: RecordHandler<Records>
   user: string | null
-  on: (evt: EventName, callback: (...args: unknown[]) => void) => this
-  off: (evt: EventName, callback: (...args: unknown[]) => void) => this
+  on: (evt: EventName | 'error', callback: (...args: unknown[]) => void) => this
+  off: (evt: EventName | 'error', callback: (...args: unknown[]) => void) => this
   getConnectionState: () => ConnectionStateName
   close: () => void
   login(callback: (success: boolean, authData: unknown) => void): this

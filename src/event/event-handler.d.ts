@@ -10,7 +10,11 @@ export default class EventHandler {
   off: (name: string, callback: (data: unknown) => void) => this
   observe: <Data>(name: string) => Observable<Data>
   emit: <Data>(name: string, data?: Data) => void
-  provide: (pattern: string, callback: (name: string) => void, options: unknown) => () => void
+  provide: (
+    pattern: string,
+    callback: (name: string) => void,
+    options: unknown,
+  ) => (() => void) | void
 }
 
 export interface EventStats {

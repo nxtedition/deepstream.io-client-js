@@ -188,6 +188,16 @@ expectAssignable<Promise<void>>(
 )
 expectAssignable<Promise<void>>(ds.record.update('p', 'p1', (data) => data, { timeout: 5000 }))
 
+// update: updater receives version as second argument
+ds.record.update('p', (data, version) => {
+  expectType<string>(version)
+  return data
+})
+ds.record.update('p', 'p1', (data, version) => {
+  expectType<string>(version)
+  return data
+})
+
 // Circular
 expectAssignable<string | undefined>(await ds.record.get('c', 'a.b1'))
 
@@ -219,6 +229,19 @@ expectAssignable<Promise<typeof rec>>(rec.when({ state: 2, timeout: 5000 }))
 expectAssignable<Promise<typeof rec>>(rec.when(2, { timeout: 5000 }))
 expectAssignable<Promise<typeof rec>>(rec.when(2, { signal: new AbortController().signal }))
 
+// Record.subscribe: callback receives (record, opaque)
+rec.subscribe((record, opaque) => {
+  expectType<typeof rec>(record)
+  expectType<unknown>(opaque)
+})
+rec.subscribe((record, opaque) => {}, 'my-opaque-token')
+
+// Record.unsubscribe: same callback signature
+rec.unsubscribe((record, opaque) => {
+  expectType<typeof rec>(record)
+  expectType<unknown>(opaque)
+})
+
 // Record.update with options
 expectAssignable<Promise<void>>(rec.update((x) => x, { signal: new AbortController().signal }))
 expectAssignable<Promise<void>>(rec.update((x) => x, { timeout: 5000 }))
@@ -229,7 +252,37 @@ expectAssignable<Promise<void>>(
 expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { timeout: 5000 }))
 expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { state: 2 }))
 
+// Record.update: updater receives version as second argument
+rec.update((x, version) => {
+  expectType<string>(version)
+  return x
+})
+rec.update('o0', (x, version) => {
+  expectType<string>(version)
+  return x
+})
+
 const state = 'VOID'
 expectType<0>(ds.record.STATE[state])
 const unknownState: string = 'VOID'
 expectType<number>(ds.record.STATE[unknownState])
+
+// record.getRecord: [Symbol.dispose] is present
+const recDispose = ds.record.getRecord('o')
+recDispose[Symbol.dispose]()
+
+// record.provide: returns Disposer | void
+expectAssignable<(() => void) | void>(ds.record.provide('pattern*', () => ({})))
+const recordDisposer = ds.record.provide('pattern*', () => ({}))
+if (recordDisposer) {
+  recordDisposer()
+  recordDisposer[Symbol.dispose]()
+}
+
+// event.provide: returns (() => void) | void
+expectAssignable<(() => void) | void>(ds.event.provide('pattern*', () => {}, {}))
+
+// client.on/off: 'error' is a valid event name
+ds.on('error', (err) => {})
+ds.off('error', (err) => {})
+expectError(ds.on('unknownEvent', () => {}))

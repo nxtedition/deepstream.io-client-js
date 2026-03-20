@@ -40,7 +40,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
     pattern: string,
     callback: (key: string) => unknown,
     optionsOrRecursive?: ProvideOptions | boolean,
-  ) => Disposer
+  ) => Disposer | void
 
   sync: (options?: SyncOptions) => Promise<void>
 
@@ -61,14 +61,17 @@ export default class RecordHandler<Records = Record<string, unknown>> {
   update: {
     <Name extends string>(
       name: Name,
-      updater: (data: Lookup<Records, Name>) => Lookup<Records, Name>,
+      updater: (data: Lookup<Records, Name>, version: string) => Lookup<Records, Name>,
       options?: UpdateOptions,
     ): Promise<void>
 
     <Name extends string, Path extends string | string[]>(
       name: Name,
       path: Path,
-      updater: (data: Get<Lookup<Records, Name>, Path>) => Get<Lookup<Records, Name>, Path>,
+      updater: (
+        data: Get<Lookup<Records, Name>, Path>,
+        version: string,
+      ) => Get<Lookup<Records, Name>, Path>,
       options?: UpdateOptions,
     ): Promise<void>
   }

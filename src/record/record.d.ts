@@ -38,8 +38,15 @@ export default class Record<Data = unknown> {
 
   ref(): Record<Data>
   unref(): Record<Data>
-  subscribe(callback: (record: Record<Data>) => void, opaque?: unknown): Record<Data>
-  unsubscribe(callback: (record: Record<Data>) => void, opaque?: unknown): Record<Data>
+  [Symbol.dispose](): void
+  subscribe(
+    callback: (record: Record<Data>, opaque: unknown) => void,
+    opaque?: unknown,
+  ): Record<Data>
+  unsubscribe(
+    callback: (record: Record<Data>, opaque: unknown) => void,
+    opaque?: unknown,
+  ): Record<Data>
 
   get: {
     // with path
@@ -67,11 +74,14 @@ export default class Record<Data = unknown> {
 
   update: {
     // without path
-    (updater: (data: Readonly<Data>) => Data, options?: UpdateOptions): Promise<void>
+    (
+      updater: (data: Readonly<Data>, version: string) => Data,
+      options?: UpdateOptions,
+    ): Promise<void>
     // with path
     <P extends string | string[]>(
       path: P,
-      updater: (dataAtPath: Readonly<Get<Data, P>>) => Get<Data, P>,
+      updater: (dataAtPath: Readonly<Get<Data, P>>, version: string) => Get<Data, P>,
       options?: UpdateOptions,
     ): Promise<void>
   }
