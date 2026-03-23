@@ -33,6 +33,8 @@ export type {
   SyncOptions,
   Paths,
   Get,
+  ConnectionStateName,
+  DeepstreamErrorEventName,
 }
 
 type RecordStateConstants = Readonly<{
@@ -99,6 +101,26 @@ export interface DeepstreamError extends Error {
   data?: unknown
 }
 
+export interface DeepstreamMessage {
+  raw: string | null
+  topic: string | null
+  action: string | null
+  data: string[]
+}
+
+export interface DeepstreamClientEventMap {
+  connectionStateChanged: (state: ConnectionStateName) => void
+  connected: (connected: boolean) => void
+  MAX_RECONNECTION_ATTEMPTS_REACHED: (attempt: number) => void
+  error: (error: DeepstreamError) => void
+  recv: (message: DeepstreamMessage) => void
+  send: (message: DeepstreamMessage) => void
+}
+
+type DeepstreamErrorEventMap = {
+  [K in DeepstreamErrorEventName]: (error: DeepstreamError) => void
+}
+
 export interface DeepstreamClient<
   Records extends Record<string, unknown> = Record<string, unknown>,
   Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
@@ -108,18 +130,21 @@ export interface DeepstreamClient<
   rpc: RpcHandler<Methods>
   record: RecordHandler<Records>
   user: string | null
-  on(evt: 'connectionStateChanged', callback: (state: ConnectionStateName) => void): this
-  on(evt: 'connected', callback: (connected: boolean) => void): this
-  on(evt: 'MAX_RECONNECTION_ATTEMPTS_REACHED', callback: (attempt: number) => void): this
-  on(evt: 'error' | DeepstreamErrorEventName, callback: (error: DeepstreamError) => void): this
-  off(evt: 'connectionStateChanged', callback: (state: ConnectionStateName) => void): this
-  off(evt: 'connected', callback: (connected: boolean) => void): this
-  off(evt: 'MAX_RECONNECTION_ATTEMPTS_REACHED', callback: (attempt: number) => void): this
-  off(evt: 'error' | DeepstreamErrorEventName, callback: (error: DeepstreamError) => void): this
+  on<K extends keyof (DeepstreamClientEventMap & DeepstreamErrorEventMap)>(
+    evt: K,
+    callback: (DeepstreamClientEventMap & DeepstreamErrorEventMap)[K],
+  ): this
+  off<K extends keyof (DeepstreamClientEventMap & DeepstreamErrorEventMap)>(
+    evt: K,
+    callback: (DeepstreamClientEventMap & DeepstreamErrorEventMap)[K],
+  ): this
   getConnectionState: () => ConnectionStateName
   close: () => void
   login(callback: (success: boolean, authData: unknown) => void): this
-  login(authParams: object, callback: (success: boolean, authData: unknown) => void): this
+  login(
+    authParams: Record<string, unknown>,
+    callback: (success: boolean, authData: unknown) => void,
+  ): this
   stats: {
     record: RecordStats
     rpc: RpcStats
