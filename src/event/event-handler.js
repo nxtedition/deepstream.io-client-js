@@ -78,7 +78,7 @@ EventHandler.on = function (name, callback) {
 
 EventHandler.once = function (name, callback) {
   const fn = (...args) => {
-    this.unsubscribe(fn)
+    this.unsubscribe(name, fn)
     callback(...args)
   }
   this.subscribe(name, fn)

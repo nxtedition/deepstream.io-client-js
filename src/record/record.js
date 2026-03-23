@@ -249,7 +249,7 @@ class Record {
   when(stateOrNil, optionsOrNil) {
     invariant(this._refs > 0, 'missing refs')
 
-    if (stateOrNil != null && stateOrNil === 'object') {
+    if (stateOrNil != null && typeof stateOrNil === 'object') {
       optionsOrNil = stateOrNil
       stateOrNil = optionsOrNil?.state
     }
