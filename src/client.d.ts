@@ -7,10 +7,21 @@ import type { EventStats } from './event/event-handler.js'
 import type RpcHandler from './rpc/rpc-handler.js'
 import type { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
+export interface DeepstreamClientOptions {
+  reconnectIntervalIncrement?: number
+  maxReconnectInterval?: number
+  maxReconnectAttempts?: number
+  maxPacketSize?: number
+  batchSize?: number
+  schedule?: ((fn: () => void) => void) | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  logger?: any
+}
+
 export default function <
   Records extends Record<string, unknown> = Record<string, unknown>,
   Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
->(url: string, options?: unknown): DeepstreamClient<Records, Methods>
+>(url: string, options?: DeepstreamClientOptions): DeepstreamClient<Records, Methods>
 
 export type {
   DsRecord,
@@ -20,6 +31,7 @@ export type {
   RpcMethodDef,
   ProvideOptions,
   SyncOptions,
+  DeepstreamClientOptions,
   Paths,
   Get,
 }
