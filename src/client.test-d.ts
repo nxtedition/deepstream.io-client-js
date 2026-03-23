@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import make, { type DeepstreamClient } from './client.js'
+import make, { type DeepstreamClient, type DeepstreamError } from './client.js'
 import { expectAssignable, expectError, expectType } from 'tsd'
 import type { Observable } from 'rxjs'
 import type { EmptyObject } from 'type-fest'
@@ -287,3 +287,34 @@ expectAssignable<(() => void) | void>(ds.event.provide('pattern*', () => {}, {})
 ds.on('error', (err) => {})
 ds.off('error', (err) => {})
 expectError(ds.on('unknownEvent', () => {}))
+
+// client.on: callback arg types per event
+ds.on('error', (err) => {
+  expectType<DeepstreamError>(err)
+})
+ds.on('connectionError', (err) => {
+  expectType<DeepstreamError>(err)
+})
+ds.on('connectionStateChanged', (state) => {
+  expectType<
+    | 'CLOSED'
+    | 'AWAITING_CONNECTION'
+    | 'CHALLENGING'
+    | 'AWAITING_AUTHENTICATION'
+    | 'AUTHENTICATING'
+    | 'OPEN'
+    | 'ERROR'
+    | 'RECONNECTING'
+  >(state)
+})
+ds.on('connected', (connected) => {
+  expectType<boolean>(connected)
+})
+ds.on('MAX_RECONNECTION_ATTEMPTS_REACHED', (attempt) => {
+  expectType<number>(attempt)
+})
+
+// client.on: wrong callback arg types are errors
+expectError(ds.on('connectionStateChanged', (state: number) => {}))
+expectError(ds.on('connected', (connected: string) => {}))
+expectError(ds.on('MAX_RECONNECTION_ATTEMPTS_REACHED', (attempt: string) => {}))

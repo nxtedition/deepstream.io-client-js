@@ -31,7 +31,6 @@ export type {
   RpcMethodDef,
   ProvideOptions,
   SyncOptions,
-  DeepstreamClientOptions,
   Paths,
   Get,
 }
@@ -89,6 +88,16 @@ type EventConstants = Readonly<{
 }>
 type EventKey = keyof EventConstants
 type EventName = EventConstants[EventKey]
+type DeepstreamErrorEventName = Exclude<
+  EventName,
+  'connectionStateChanged' | 'connected' | 'MAX_RECONNECTION_ATTEMPTS_REACHED'
+>
+
+export interface DeepstreamError extends Error {
+  topic?: string
+  event?: EventName | null
+  data?: unknown
+}
 
 export interface DeepstreamClient<
   Records extends Record<string, unknown> = Record<string, unknown>,
@@ -99,8 +108,14 @@ export interface DeepstreamClient<
   rpc: RpcHandler<Methods>
   record: RecordHandler<Records>
   user: string | null
-  on: (evt: EventName | 'error', callback: (...args: unknown[]) => void) => this
-  off: (evt: EventName | 'error', callback: (...args: unknown[]) => void) => this
+  on(evt: 'connectionStateChanged', callback: (state: ConnectionStateName) => void): this
+  on(evt: 'connected', callback: (connected: boolean) => void): this
+  on(evt: 'MAX_RECONNECTION_ATTEMPTS_REACHED', callback: (attempt: number) => void): this
+  on(evt: 'error' | DeepstreamErrorEventName, callback: (error: DeepstreamError) => void): this
+  off(evt: 'connectionStateChanged', callback: (state: ConnectionStateName) => void): this
+  off(evt: 'connected', callback: (connected: boolean) => void): this
+  off(evt: 'MAX_RECONNECTION_ATTEMPTS_REACHED', callback: (attempt: number) => void): this
+  off(evt: 'error' | DeepstreamErrorEventName, callback: (error: DeepstreamError) => void): this
   getConnectionState: () => ConnectionStateName
   close: () => void
   login(callback: (success: boolean, authData: unknown) => void): this
