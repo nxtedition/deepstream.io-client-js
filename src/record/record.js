@@ -20,13 +20,7 @@ class Record {
     this._state = C.RECORD_STATE.VOID
     this._refs = 0
     this._subscriptions = []
-
-    /** @type {Array|null} */
-    this._emittingArr = null
-    /** @type {number} */
-    this._emittingIndex = -1
-
-    this._observers = []
+    this._emitting = false
 
     /** @type Map? */ this._updating = null
     /** @type Array? */ this._patching = null
@@ -94,8 +88,9 @@ class Record {
    * @returns {Record}
    */
   subscribe(fn, opaque = null) {
-    if (this._emittingArr == this._subscriptions) {
+    if (this._emitting) {
       this._subscriptions = this._subscriptions.slice()
+      this._emitting = false
     }
 
     this._subscriptions.push(fn, opaque)
@@ -110,8 +105,9 @@ class Record {
    * @returns {Record}
    */
   unsubscribe(fn, opaque = null) {
-    if (this._emittingArr == this._subscriptions) {
+    if (this._emitting) {
       this._subscriptions = this._subscriptions.slice()
+      this._emitting = false
     }
 
     let idx = -1
@@ -130,41 +126,6 @@ class Record {
     }
 
     return this
-  }
-
-  /**
-   * @note Subscribers are unordered.
-   * @param {{ index: number, onUpdate: (Record) => void}} subscription
-   */
-  _observe(subscription) {
-    if (subscription.index != null && subscription.index !== -1) {
-      throw new Error('already observing')
-    }
-
-    subscription.index = this._observers.push(subscription) - 1
-  }
-
-  /**
-   * @param {{ index: number, onUpdate: (Record) => void}} subscription
-   */
-  _unobserve(subscription) {
-    if (subscription.index == null || subscription.index === -1) {
-      throw new Error('not observing')
-    }
-
-    if (this._emittingArr === this._observers) {
-      // TODO (perf): Shift from start if emitting?
-      this._observers = this._observers.slice()
-    }
-
-    const idx = subscription.index
-    const tmp = this._observers.pop()
-    subscription.index = -1
-
-    if (tmp !== subscription) {
-      this._observers[idx] = tmp
-      this._observers[idx].index = idx
-    }
   }
 
   get(path) {
@@ -554,41 +515,18 @@ class Record {
   }
 
   _emitUpdate() {
-    if (this._emittingArr != null) {
-      throw new Error('cannot reenter emitUpdate')
-    }
+    this._emitting = true
 
-    try {
-      const arr = this._subscriptions
-      const len = arr.length
+    const arr = this._subscriptions
+    const len = arr.length
 
-      this._emittingArr = arr
-      for (let n = 0; n < len; n += 2) {
-        this._emittingIndex = n
-        // TODO (fix): What if this throws?
-        arr[n + 0](this, arr[n + 1])
-      }
-    } finally {
-      this._emittingArr = null
-      this._emittingIndex = -1
-    }
-
-    try {
-      const arr = this._observers
-      const len = arr.length
-
-      this._emittingArr = arr
-      for (let n = 0; n < len; n++) {
-        this._emittingIndex = n
-        // TODO (fix): What if this throws?
-        arr[n].onUpdate(this, arr[n])
-      }
-    } finally {
-      this._emittingArr = null
-      this._emittingIndex = -1
+    for (let n = 0; n < len; n += 2) {
+      arr[n + 0](this, arr[n + 1])
     }
 
     this._handler._client.emit('recordUpdated', this)
+
+    this._emitting = false
   }
 }
 
