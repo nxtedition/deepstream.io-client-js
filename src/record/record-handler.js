@@ -44,10 +44,13 @@ function onUpdate(record, subscription) {
   }
 
   if (!subscription.synced || subscription.record.state < subscription.state) {
+    if (subscription.timeoutValue > 0 && !subscription.timeout) {
+      subscription.timeout = timers.setTimeout(onTimeout, subscription.timeoutValue, subscription)
+    }
     return
   }
 
-  if (subscription.timeout != null) {
+  if (subscription.timeout) {
     timers.clearTimeout(subscription.timeout)
     subscription.timeout = null
   }
@@ -94,36 +97,6 @@ function onTimeout(subscription) {
   )
 }
 
-class Subscription {
-  /** @type {unknown} */
-  key = null
-  /** @type {unknown} */
-  subscriber = null
-  /** @type {unknown} */
-  path = null
-  /** @type {number} */
-  state = 0
-  /** @type {AbortSignal|null} */
-  signal = null
-  /** @type {boolean} */
-  dataOnly = false
-
-  /** @type {Record|null} */
-  record = null
-  /** @type {Timeout|null} */
-  timeout = null
-  /** @type {Function?} */
-  abort = null
-  /** @type {object|Array} */
-  data = kEmpty
-  /** @type {boolean} */
-  synced = false
-
-  index = -1
-
-  onUpdate = onUpdate
-}
-
 class RecordHandler {
   constructor(options, connection, client) {
     this.JSON = jsonPath
@@ -142,12 +115,8 @@ class RecordHandler {
 
     this._connected = 0
     this._stats = {
-      updating: 0,
       created: 0,
       destroyed: 0,
-      records: 0,
-      pruning: 0,
-      patching: 0,
     }
 
     this._syncQueue = []
@@ -169,23 +138,11 @@ class RecordHandler {
       this._pruning = new Set()
 
       for (const rec of pruning) {
-        try {
-          rec._$dispose()
-          if (!this._records.delete(rec.name)) {
-            this._client._$onError(
-              C.TOPIC.RECORD,
-              C.EVENT.INTERNAL_ERROR,
-              `failed to delete pruned record: ${rec.name}`,
-            )
-          }
-        } catch (err) {
-          this._client._$onError(C.TOPIC.RECORD, C.EVENT.INTERNAL_ERROR, err)
-        }
+        rec._$dispose()
+        this._records.delete(rec.name)
       }
 
       this._stats.destroyed += pruning.size
-      this._stats.pruning = this._pruning.size
-      this._stats.records = this._records.size
 
       this._pruningTimeout.refresh()
     }
@@ -199,7 +156,6 @@ class RecordHandler {
     } else {
       this._pruning.delete(rec)
     }
-    this._stats.pruning = this._pruning.size
   }
 
   _onUpdating(rec, value) {
@@ -207,12 +163,9 @@ class RecordHandler {
 
     if (value) {
       invariant(!callbacks, 'updating callbacks must not exist')
-      this._stats.updating += 1
       this._updating.set(rec, [])
     } else {
       invariant(callbacks, 'updating callbacks must exist')
-
-      this._stats.updating -= 1
       this._updating.delete(rec)
       for (const callback of callbacks) {
         callback()
@@ -230,7 +183,6 @@ class RecordHandler {
         callback()
       }
     }
-    this._stats.patching = this._patching.size
   }
 
   get connected() {
@@ -246,6 +198,10 @@ class RecordHandler {
     return {
       ...this._stats,
       subscriptions,
+      updating: this._updating.size,
+      patching: this._patching.size,
+      putting: this._putting.size,
+      pruning: this._pruning.size,
     }
   }
 
@@ -268,16 +224,14 @@ class RecordHandler {
     }
 
     let record = this._records.get(name)
+
     if (!record) {
       record = new Record(name, this)
-      this._records.set(name, record)
       this._stats.created += 1
-      this._stats.records = this._records.size
-    } else {
-      record.ref()
+      this._records.set(name, record)
     }
 
-    return record
+    return record.ref()
   }
 
   provide(pattern, callback, options) {
@@ -599,7 +553,6 @@ class RecordHandler {
     let timeout = defaults?.timeout ?? 0
     let dataOnly = defaults?.dataOnly ?? false
     let sync = defaults?.sync ?? false
-    let key
 
     let idx = 0
 
@@ -618,7 +571,7 @@ class RecordHandler {
     }
 
     if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
-      const options = args[idx++] || {}
+      const options = args[idx] ?? {}
 
       if (options.signal !== undefined) {
         signal = options.signal
@@ -642,10 +595,6 @@ class RecordHandler {
 
       if (options.sync !== undefined) {
         sync = options.sync
-      }
-
-      if (options.key !== undefined) {
-        key = options.key
       }
     }
 
@@ -675,14 +624,35 @@ class RecordHandler {
         return
       }
 
-      const subscription = new Subscription()
+      // TODO (perf): Make a class
+      const subscription = {
+        /** @readonly @type {unknown} */
+        subscriber,
+        /** @readonly @type {unknown} */
+        path,
+        /** @readonly @type {number} */
+        state,
+        /** @type {AbortSignal|null} */
+        signal,
+        /** @readonly @type {boolean} */
+        dataOnly,
+        /** @readonly @type {number} */
+        timeoutValue: timeout,
 
-      subscription.key = key
-      subscription.subscriber = subscriber
-      subscription.path = path
-      subscription.state = state
-      subscription.signal = signal
-      subscription.dataOnly = dataOnly
+        /** @type {Record|null} */
+        record: null,
+        /** @type {Timeout|null} */
+        timeout: null,
+        /** @type {Function?} */
+        abort: null,
+        /** @type {object|Array} */
+        data: kEmpty,
+        /** @type {boolean} */
+        synced: false,
+
+        index: -1,
+        onUpdate,
+      }
 
       subscriber.add(() => {
         if (subscription.timeout) {
@@ -715,10 +685,6 @@ class RecordHandler {
         this._sync(onSync, sync, subscription)
       } else {
         onSync(subscription)
-      }
-
-      if (timeout > 0 && (!subscription.synced || subscription.record.state < subscription.state)) {
-        subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
       }
     })
   }

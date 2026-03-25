@@ -18,18 +18,15 @@ class Record {
     this._version = ''
     this._data = jsonPath.EMPTY_OBJ
     this._state = C.RECORD_STATE.VOID
-    this._refs = 1
-
-    /** @type {Array|null} */
-    this._subscriptions = null
+    this._refs = 0
+    this._subscriptions = []
 
     /** @type {Array|null} */
     this._emittingArr = null
     /** @type {number} */
     this._emittingIndex = -1
 
-    /** @type {Array|null} */
-    this._observers = null
+    this._observers = []
 
     /** @type Map? */ this._updating = null
     /** @type Array? */ this._patching = null
@@ -97,8 +94,6 @@ class Record {
    * @returns {Record}
    */
   subscribe(fn, opaque = null) {
-    this._subscriptions ??= []
-
     if (this._emittingArr == this._subscriptions) {
       this._subscriptions = this._subscriptions.slice()
     }
@@ -115,10 +110,6 @@ class Record {
    * @returns {Record}
    */
   unsubscribe(fn, opaque = null) {
-    if (!this._subscriptions) {
-      return this
-    }
-
     if (this._emittingArr == this._subscriptions) {
       this._subscriptions = this._subscriptions.slice()
     }
@@ -146,15 +137,8 @@ class Record {
    * @param {{ index: number, onUpdate: (Record) => void}} subscription
    */
   _observe(subscription) {
-    this._observers ??= []
-
     if (subscription.index != null && subscription.index !== -1) {
       throw new Error('already observing')
-    }
-
-    if (this._emittingArr === this._observers) {
-      // TODO (perf): Shift from start if emitting?
-      this._observers = this._observers.slice()
     }
 
     subscription.index = this._observers.push(subscription) - 1
@@ -164,10 +148,6 @@ class Record {
    * @param {{ index: number, onUpdate: (Record) => void}} subscription
    */
   _unobserve(subscription) {
-    if (!this._observers) {
-      return this
-    }
-
     if (subscription.index == null || subscription.index === -1) {
       throw new Error('not observing')
     }
@@ -257,7 +237,6 @@ class Record {
     const signal = optionsOrNil?.signal
     const state = stateOrNil ?? C.RECORD_STATE.SERVER
     const timeout = optionsOrNil?.timeout ?? 2 * 60e3
-    const key = optionsOrNil?.key ?? 'when'
 
     if (signal?.aborted) {
       return Promise.reject(signal.reason || new utils.AbortError())
@@ -273,33 +252,14 @@ class Record {
         return
       }
 
-      const subscription = {
-        key,
-        /** @type {timers.Timeout|NodeJS.Timeout|null} */
-        timeout: null,
-        /** @type {AbortSignal|null} */
-        signal: null,
-        done: false,
-
-        state,
-        index: -1,
-        onUpdate(record, subscription) {
-          if (record._state >= subscription.state) {
-            onDone(null)
-          }
-        },
-      }
-
-      const onAbort = (e) => {
-        onDone(signal.reason ?? new utils.AbortError())
-      }
+      let timeoutHandle
+      let done = false
 
       const onDone = (err) => {
-        if (subscription.done) {
+        if (done) {
           return
         }
-
-        subscription.done = true
+        done = true
 
         if (err) {
           reject(err)
@@ -308,21 +268,30 @@ class Record {
         }
 
         this.unref()
-        this._unobserve(subscription)
+        this.unsubscribe(onUpdate)
 
-        if (subscription.timeout != null) {
-          timers.clearTimeout(subscription.timeout)
-          subscription.timeout = null
+        if (timeoutHandle) {
+          timers.clearTimeout(timeoutHandle)
+          timeoutHandle = null
         }
 
-        if (subscription.signal != null) {
-          subscription.signal.removeEventListener('abort', onAbort)
-          subscription.signal = null
+        signal?.removeEventListener('abort', onAbort)
+      }
+
+      const onUpdate = () => {
+        if (this._state >= state) {
+          onDone(null)
         }
       }
 
+      const onAbort = signal
+        ? () => {
+            onDone(signal.reason ?? new utils.AbortError())
+          }
+        : null
+
       if (timeout > 0) {
-        subscription.timeout = timers.setTimeout(() => {
+        timeoutHandle = timers.setTimeout(() => {
           const expected = C.RECORD_STATE_NAME[state]
           const current = C.RECORD_STATE_NAME[this._state]
 
@@ -334,13 +303,10 @@ class Record {
         }, timeout)
       }
 
-      if (signal) {
-        subscription.signal = signal
-        signal?.addEventListener('abort', onAbort)
-      }
+      signal?.addEventListener('abort', onAbort)
 
       this.ref()
-      this._observe(subscription)
+      this.subscribe(onUpdate)
     })
   }
 
@@ -598,38 +564,34 @@ class Record {
       throw new Error('cannot reenter emitUpdate')
     }
 
-    if (this._subscriptions != null) {
-      try {
-        const arr = this._subscriptions
-        const len = arr.length
+    try {
+      const arr = this._subscriptions
+      const len = arr.length
 
-        this._emittingArr = arr
-        for (let n = 0; n < len; n += 2) {
-          this._emittingIndex = n
-          // TODO (fix): What if this throws?
-          arr[n + 0](this, arr[n + 1])
-        }
-      } finally {
-        this._emittingArr = null
-        this._emittingIndex = -1
+      this._emittingArr = arr
+      for (let n = 0; n < len; n += 2) {
+        this._emittingIndex = n
+        // TODO (fix): What if this throws?
+        arr[n + 0](this, arr[n + 1])
       }
+    } finally {
+      this._emittingArr = null
+      this._emittingIndex = -1
     }
 
-    if (this._observers != null) {
-      try {
-        const arr = this._observers
-        const len = arr.length
+    try {
+      const arr = this._observers
+      const len = arr.length
 
-        this._emittingArr = arr
-        for (let n = 0; n < len; n++) {
-          this._emittingIndex = n
-          // TODO (fix): What if this throws?
-          arr[n].onUpdate(this, arr[n])
-        }
-      } finally {
-        this._emittingArr = null
-        this._emittingIndex = -1
+      this._emittingArr = arr
+      for (let n = 0; n < len; n++) {
+        this._emittingIndex = n
+        // TODO (fix): What if this throws?
+        arr[n].onUpdate(this, arr[n])
       }
+    } finally {
+      this._emittingArr = null
+      this._emittingIndex = -1
     }
 
     this._handler._client.emit('recordUpdated', this)
