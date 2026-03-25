@@ -37,6 +37,7 @@ export default class Listener {
 
     this._topic = topic
     this._pattern = pattern
+    this._expr = new RegExp(pattern)
     this._callback = callback
     this._handler = handler
     this._client = this._handler._client
@@ -66,6 +67,11 @@ export default class Listener {
           name,
           'invalid accept: listener exists (pattern:' + this._pattern + ' name:' + name + ')',
         )
+        return
+      }
+
+      if (!this._expr.test(name)) {
+        this._error(name, 'invalid accept: name does not match pattern')
         return
       }
 

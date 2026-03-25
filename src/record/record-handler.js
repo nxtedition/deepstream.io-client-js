@@ -44,17 +44,10 @@ function onUpdate(record, subscription) {
   }
 
   if (!subscription.synced || subscription.record.state < subscription.state) {
-    if (subscription.timeoutValue > 0) {
-      if (!subscription.timeout) {
-        subscription.timeout = timers.setTimeout(onTimeout, subscription.timeoutValue, subscription)
-      } else {
-        subscription.timeout.refresh()
-      }
-    }
     return
   }
 
-  if (subscription.timeout) {
+  if (subscription.timeout != null) {
     timers.clearTimeout(subscription.timeout)
     subscription.timeout = null
   }
@@ -142,8 +135,18 @@ class RecordHandler {
       this._pruning = new Set()
 
       for (const rec of pruning) {
-        rec._$dispose()
-        this._records.delete(rec.name)
+        try {
+          rec._$dispose()
+          if (!this._records.delete(rec.name)) {
+            this._client._$onError(
+              C.TOPIC.RECORD,
+              C.EVENT.INTERNAL_ERROR,
+              `failed to delete pruned record: ${rec.name}`,
+            )
+          }
+        } catch (err) {
+          this._client._$onError(C.TOPIC.RECORD, C.EVENT.INTERNAL_ERROR, err)
+        }
       }
 
       this._stats.destroyed += pruning.size
@@ -689,6 +692,10 @@ class RecordHandler {
         this._sync(onSync, sync, subscription)
       } else {
         onSync(subscription)
+      }
+
+      if (timeout > 0 && (!subscription.synced || subscription.record.state < subscription.state)) {
+        subscription.timeout = timers.setTimeout(onTimeout, timeout, subscription)
       }
     })
   }

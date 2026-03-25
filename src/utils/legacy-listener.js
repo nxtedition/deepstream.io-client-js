@@ -6,6 +6,7 @@ export default class Listener {
   constructor(topic, pattern, callback, handler, { recursive = false, stringify = null } = {}) {
     this._topic = topic
     this._pattern = pattern
+    this._expr = new RegExp(pattern)
     this._callback = callback
     this._handler = handler
     this._client = this._handler._client
@@ -51,6 +52,11 @@ export default class Listener {
     if (message.action === C.ACTIONS.SUBSCRIPTION_FOR_PATTERN_FOUND) {
       if (this._subscriptions.has(name)) {
         this._error(name, 'invalid add: listener exists')
+        return
+      }
+
+      if (!this._expr.test(name)) {
+        this._error(name, 'invalid add: name does not match pattern')
         return
       }
 
