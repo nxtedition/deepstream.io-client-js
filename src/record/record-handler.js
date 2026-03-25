@@ -1,5 +1,5 @@
 import Record from './record.js'
-import MulticastListener from '../utils/multicast-listener.js'
+import LegacyListener from '../utils/legacy-listener.js'
 import UnicastListener from '../utils/unicast-listener.js'
 import * as C from '../constants/constants.js'
 import * as rxjs from 'rxjs'
@@ -35,7 +35,7 @@ const GET2_DEFAULTS = {
 
 function onSync(subscription) {
   subscription.synced = true
-  onUpdate(subscription.record, subscription)
+  onUpdate(null, subscription)
 }
 
 function onUpdate(record, subscription) {
@@ -84,9 +84,18 @@ function onTimeout(subscription) {
 
   subscription.subscriber.error(
     Object.assign(
-      new Error(`timeout state: ${subscription.record.name} [${current}<${expected}]`),
+      new Error(
+        !subscription.synced
+          ? `timeout sync: ${subscription.record.name}`
+          : `timeout state: ${subscription.record.name} [${current}<${expected}]`,
+      ),
       {
         code: 'ETIMEDOUT',
+        timeout: subscription.timeoutValue,
+        expected,
+        current,
+        synced: subscription.synced,
+        name: subscription.record.name,
       },
     ),
   )
@@ -119,7 +128,7 @@ class RecordHandler {
     }
 
     this._syncQueue = []
-    this._syncMap = {}
+    this._syncMap = new Map()
 
     this.set = this.set.bind(this)
     this.get = this.get.bind(this)
@@ -219,13 +228,18 @@ class RecordHandler {
    * @returns {Record}
    */
   getRecord(name) {
-    invariant(
-      typeof name === 'string' &&
-        name.length > 0 &&
-        name !== '[object Object]' &&
-        name.length <= 4096,
-      `invalid name ${name}`,
-    )
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument: name')
+    }
+
+    if (name.startsWith('null') || name.startsWith('undefined') || name === '[object Object]') {
+      this._client._$onError(
+        C.TOPIC.RECORD,
+        C.EVENT.USER_ERROR,
+        'name should not start with null or undefined',
+        name,
+      )
+    }
 
     let record = this._records.get(name)
 
@@ -261,7 +275,7 @@ class RecordHandler {
     const listener =
       options.mode?.toLowerCase() === 'unicast'
         ? new UnicastListener(C.TOPIC.RECORD, pattern, callback, this, options)
-        : new MulticastListener(C.TOPIC.RECORD, pattern, callback, this, options)
+        : new LegacyListener(C.TOPIC.RECORD, pattern, callback, this, options)
 
     this._stats.listeners += 1
     this._listeners.set(pattern, listener)
@@ -282,7 +296,7 @@ class RecordHandler {
     // TODO (perf): Slow implementation...
 
     const signal = opts?.signal
-    const timeout = opts?.timeout
+    const timeout = opts?.timeout ?? 10 * 60e3
 
     let disposers
     try {
@@ -298,18 +312,17 @@ class RecordHandler {
       signalPromise?.catch(noop)
 
       if (this._patching.size) {
-        let promises
+        const promises = []
 
         {
           const patchingPromises = []
           for (const callbacks of this._patching.values()) {
             patchingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
-          promises ??= []
           promises.push(Promise.all(patchingPromises))
         }
 
-        if (timeout) {
+        if (timeout && promises.length) {
           promises.push(
             new Promise((resolve) => {
               const patchingTimeout = timers.setTimeout(() => {
@@ -326,30 +339,28 @@ class RecordHandler {
           )
         }
 
-        if (signalPromise) {
-          promises ??= []
+        if (signalPromise && promises.length) {
           promises.push(signalPromise)
         }
 
-        if (promises) {
+        if (promises.length) {
           await Promise.race(promises)
+          signal?.throwIfAborted()
         }
       }
 
       if (this._updating.size) {
-        let promises
+        const promises = []
 
         {
           const updatingPromises = []
           for (const callbacks of this._updating.values()) {
             updatingPromises.push(new Promise((resolve) => callbacks.push(resolve)))
           }
-          promises ??= []
           promises.push(Promise.all(updatingPromises))
         }
 
-        if (timeout) {
-          promises ??= []
+        if (timeout && promises.length) {
           promises.push(
             new Promise((resolve) => {
               const updatingTimeout = timers.setTimeout(() => {
@@ -366,18 +377,22 @@ class RecordHandler {
           )
         }
 
-        if (promises) {
+        if (signalPromise && promises.length) {
+          promises.push(signalPromise)
+        }
+
+        if (promises.length) {
           await Promise.race(promises)
+          signal?.throwIfAborted()
         }
       }
 
       {
-        const syncPromise = new Promise((resolve) => this._sync(resolve))
+        const promises = []
 
-        let promises
+        promises.push(new Promise((resolve) => this._sync(resolve)))
 
         if (timeout) {
-          promises ??= []
           promises.push(
             new Promise((resolve, reject) => {
               const serverTimeout = timers.setTimeout(() => {
@@ -390,15 +405,12 @@ class RecordHandler {
         }
 
         if (signalPromise) {
-          promises ??= []
           promises.push(signalPromise)
         }
 
-        if (promises) {
-          promises.push(syncPromise)
+        if (promises.length) {
           await Promise.race(promises)
-        } else {
-          await syncPromise
+          signal?.throwIfAborted()
         }
       }
     } finally {
@@ -554,78 +566,78 @@ class RecordHandler {
    * @returns {rxjs.Observable}
    */
   _observe(defaults, name, ...args) {
+    let path
+    let state = defaults?.state ?? C.RECORD_STATE.CLIENT
+    let signal = null
+    let timeout = defaults?.timeout ?? 0
+    let dataOnly = defaults?.dataOnly ?? false
+    let sync = defaults?.sync ?? false
+
+    let idx = 0
+
+    if (
+      idx < args.length &&
+      (args[idx] == null ||
+        typeof args[idx] === 'string' ||
+        Array.isArray(args[idx]) ||
+        typeof args[idx] === 'function')
+    ) {
+      path = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
+      state = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
+      const options = args[idx++] || {}
+
+      if (options.signal !== undefined) {
+        signal = options.signal
+      }
+
+      if (options.timeout !== undefined) {
+        timeout = options.timeout
+      }
+
+      if (options.path !== undefined) {
+        path = options.path
+      }
+
+      if (options.state !== undefined) {
+        state = options.state
+      }
+
+      if (options.dataOnly !== undefined) {
+        dataOnly = options.dataOnly
+      }
+
+      if (options.sync !== undefined) {
+        sync = options.sync
+      }
+    }
+
+    if (typeof state === 'string') {
+      state = C.RECORD_STATE[state.toUpperCase()]
+    }
+
+    if (!Number.isInteger(state) || state < 0) {
+      throw new Error('invalid argument: state')
+    }
+
+    if (!Number.isInteger(timeout) || timeout < 0) {
+      throw new Error('invalid argument: timeout')
+    }
+
+    if (typeof dataOnly !== 'boolean') {
+      throw new Error('invalid argument: dataOnly')
+    }
+
+    if (typeof sync !== 'boolean') {
+      throw new Error('invalid argument: sync')
+    }
+
     return new rxjs.Observable((subscriber) => {
-      let path
-      let state = defaults?.state ?? C.RECORD_STATE.CLIENT
-      let signal = null
-      let timeout = defaults?.timeout ?? 0
-      let dataOnly = defaults?.dataOnly ?? false
-      let sync = defaults?.sync ?? false
-
-      let idx = 0
-
-      if (
-        idx < args.length &&
-        (args[idx] == null ||
-          typeof args[idx] === 'string' ||
-          Array.isArray(args[idx]) ||
-          typeof args[idx] === 'function')
-      ) {
-        path = args[idx++]
-      }
-
-      if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
-        state = args[idx++]
-      }
-
-      if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
-        const options = args[idx++] || {}
-
-        if (options.signal !== undefined) {
-          signal = options.signal
-        }
-
-        if (options.timeout !== undefined) {
-          timeout = options.timeout
-        }
-
-        if (options.path !== undefined) {
-          path = options.path
-        }
-
-        if (options.state !== undefined) {
-          state = options.state
-        }
-
-        if (options.dataOnly !== undefined) {
-          dataOnly = options.dataOnly
-        }
-
-        if (options.sync !== undefined) {
-          sync = options.sync
-        }
-      }
-
-      if (typeof state === 'string') {
-        state = C.RECORD_STATE[state.toUpperCase()]
-      }
-
-      if (!Number.isInteger(state) || state < 0) {
-        throw new Error('invalid argument: state')
-      }
-
-      if (!Number.isInteger(timeout) || timeout < 0) {
-        throw new Error('invalid argument: timeout')
-      }
-
-      if (typeof dataOnly !== 'boolean') {
-        throw new Error('invalid argument: dataOnly')
-      }
-
-      if (typeof sync !== 'boolean') {
-        throw new Error('invalid argument: sync')
-      }
-
       // TODO (perf): Make a class
       const subscription = {
         /** @readonly @type {unknown} */
@@ -651,6 +663,9 @@ class RecordHandler {
         data: kEmpty,
         /** @type {boolean} */
         synced: false,
+
+        index: -1,
+        onUpdate,
       }
 
       subscriber.add(() => {
@@ -666,7 +681,7 @@ class RecordHandler {
         }
 
         if (subscription.record) {
-          subscription.record.unsubscribe(onUpdate, subscription)
+          subscription.record._unobserve(subscription)
           subscription.record.unref()
           subscription.record = null
         }
@@ -677,11 +692,11 @@ class RecordHandler {
         utils.addAbortListener(subscription.signal, subscription.abort)
       }
 
-      subscription.record = this.getRecord(name).subscribe(onUpdate, subscription)
+      subscription.record = this.getRecord(name)
+      subscription.record._observe(subscription)
 
       if (sync) {
-        // TODO (fix): What about sync timeout?
-        this._sync(onSync, sync === true ? 'WEAK' : sync, subscription)
+        this._sync(onSync, sync, subscription)
       } else {
         onSync(subscription)
       }
@@ -702,8 +717,8 @@ class RecordHandler {
         return true
       }
 
-      const sync = this._syncMap[token]
-      delete this._syncMap[token]
+      const sync = this._syncMap.get(token)
+      this._syncMap.delete(token)
 
       if (!sync) {
         return true
@@ -746,10 +761,10 @@ class RecordHandler {
         this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.PUT, update)
       }
 
-      const syncMap = {}
-      for (const sync of Object.values(this._syncMap)) {
+      const syncMap = new Map()
+      for (const sync of this._syncMap.values()) {
         const token = xuid()
-        syncMap[token] = sync
+        syncMap.set(token, sync)
         this._connection.sendMsg(
           C.TOPIC.RECORD,
           C.ACTIONS.SYNC,
@@ -784,7 +799,7 @@ class RecordHandler {
       const token = xuid()
       const queue = this._syncQueue.splice(0)
 
-      this._syncMap[token] = { queue, type }
+      this._syncMap.set(token, { queue, type })
       this._connection.sendMsg(C.TOPIC.RECORD, C.ACTIONS.SYNC, type ? [token, type] : [token])
     }, 1)
   }

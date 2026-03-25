@@ -3,6 +3,8 @@ import xxhash from 'xxhash-wasm'
 const NODE_ENV = typeof process !== 'undefined' && process.env && process.env.NODE_ENV
 const HASHER = await xxhash()
 
+// This is a hack to avoid top-level await
+// const HASHER = await xxhash()
 export const isNode = typeof process !== 'undefined' && process.toString() === '[object process]'
 export const isProduction = NODE_ENV === 'production'
 
@@ -76,6 +78,14 @@ export function shallowCopy(obj) {
 export function setTimeout(callback, timeoutDuration) {
   if (timeoutDuration !== null) {
     return globalThis.setTimeout(callback, timeoutDuration)
+  } else {
+    return -1
+  }
+}
+
+export function setInterval(callback, intervalDuration) {
+  if (intervalDuration !== null) {
+    return setInterval(callback, intervalDuration)
   } else {
     return -1
   }
