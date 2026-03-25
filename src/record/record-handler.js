@@ -44,8 +44,12 @@ function onUpdate(record, subscription) {
   }
 
   if (!subscription.synced || subscription.record.state < subscription.state) {
-    if (subscription.timeoutValue > 0 && !subscription.timeout) {
-      subscription.timeout = timers.setTimeout(onTimeout, subscription.timeoutValue, subscription)
+    if (subscription.timeoutValue > 0) {
+      if (!subscription.timeout) {
+        subscription.timeout = timers.setTimeout(onTimeout, subscription.timeoutValue, subscription)
+      } else {
+        subscription.timeout.refresh()
+      }
     }
     return
   }
