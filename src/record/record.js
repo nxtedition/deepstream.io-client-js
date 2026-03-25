@@ -16,7 +16,7 @@ class Record {
     this._handler = handler
     this._name = name
     this._version = ''
-    this._data = jsonPath.EMPTY_OBJ
+    this._data = jsonPath.EMPTY
     this._state = C.RECORD_STATE.VOID
     this._refs = 0
     this._subscriptions = []
@@ -229,7 +229,7 @@ class Record {
   when(stateOrNil, optionsOrNil) {
     invariant(this._refs > 0, 'missing refs')
 
-    if (stateOrNil != null && typeof stateOrNil === 'object') {
+    if (stateOrNil != null && stateOrNil === 'object') {
       optionsOrNil = stateOrNil
       stateOrNil = optionsOrNil?.state
     }
@@ -253,14 +253,8 @@ class Record {
       }
 
       let timeoutHandle
-      let done = false
 
       const onDone = (err) => {
-        if (done) {
-          return
-        }
-        done = true
-
         if (err) {
           reject(err)
         } else {
