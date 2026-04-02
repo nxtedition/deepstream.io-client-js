@@ -96,9 +96,19 @@ Connection.prototype._createEndpoint = function () {
       generateMask() {},
     })
     this._endpoint.binaryType = 'nodebuffer'
+    this._endpoint.onmessage = ({ data: buf }) => {
+      this._onMessage(buf.toString('utf8', buf[0] >= 128 ? buf[0] - 128 : 0, buf.length))
+    }
   } else {
     this._endpoint = new BrowserWebSocket(this._url)
     this._endpoint.binaryType = 'arraybuffer'
+    this._endpoint.onmessage = ({ data }) => {
+      let buf = new Uint8Array(data)
+      if (buf[0] >= 128) {
+        buf = buf.subarray(buf[0] - 128)
+      }
+      this._onMessage(this._decoder.decode(buf))
+    }
   }
 
   this._corked = false
@@ -106,14 +116,6 @@ Connection.prototype._createEndpoint = function () {
   this._endpoint.onopen = this._onOpen.bind(this)
   this._endpoint.onerror = this._onError.bind(this)
   this._endpoint.onclose = this._onClose.bind(this)
-  this._endpoint.onmessage = ({ data }) => {
-    let buf = new Uint8Array(data)
-    if (buf[0] >= 128) {
-      // Remove fast header...
-      buf = buf.subarray(buf[0] - 128)
-    }
-    this._onMessage(this._decoder.decode(buf))
-  }
 }
 
 Connection.prototype.send = function (message) {
