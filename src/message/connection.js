@@ -28,7 +28,6 @@ export default function Connection(client, url, options) {
     action: null,
     data: null,
   }
-  this._decoder = new globalThis.TextDecoder()
   this._recvQueue = new FixedQueue()
   this._reconnectTimeout = null
   this._reconnectionAttempt = 0
@@ -100,6 +99,7 @@ Connection.prototype._createEndpoint = function () {
       this._onMessage(buf.toString('utf8', buf[0] >= 128 ? buf[0] - 128 : 0, buf.length))
     }
   } else {
+    const decoder = new globalThis.TextDecoder()
     this._endpoint = new BrowserWebSocket(this._url)
     this._endpoint.binaryType = 'arraybuffer'
     this._endpoint.onmessage = ({ data }) => {
@@ -107,7 +107,7 @@ Connection.prototype._createEndpoint = function () {
       if (buf[0] >= 128) {
         buf = buf.subarray(buf[0] - 128)
       }
-      this._onMessage(this._decoder.decode(buf))
+      this._onMessage(decoder.decode(buf))
     }
   }
 
