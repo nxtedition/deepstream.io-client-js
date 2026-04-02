@@ -60,6 +60,8 @@ export default class Record<Data = unknown> {
   get: {
     // with path
     <P extends string | string[]>(path: P): Get<Data, P>
+    // with function mapper
+    <R>(fn: (data: Data) => R): R
     // without path
     (): Data
     (path: undefined | string | string[]): unknown

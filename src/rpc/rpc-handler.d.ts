@@ -13,7 +13,7 @@ export default class RpcHandler<
     callback: (
       args: Methods[Name][0],
       response: RpcResponse<Methods[Name][1]>,
-    ) => Methods[Name][1] | Promise<Methods[Name][1]> | void,
+    ) => Methods[Name][1] | Promise<Methods[Name][1]> | Promise<void> | void,
   ) => UnprovideFn | void
 
   unprovide: <Name extends keyof Methods>(name: Name) => void

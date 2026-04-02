@@ -3,7 +3,7 @@ import type { Paths, Get } from './record/record.js'
 import type RecordHandler from './record/record-handler.js'
 import type { RecordStats, ProvideOptions, SyncOptions } from './record/record-handler.js'
 import type EventHandler from './event/event-handler.js'
-import type { EventStats } from './event/event-handler.js'
+import type { EventStats, EventProvideOptions } from './event/event-handler.js'
 import type RpcHandler from './rpc/rpc-handler.js'
 import type { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
@@ -30,6 +30,7 @@ export type {
   RpcHandler,
   RpcMethodDef,
   ProvideOptions,
+  EventProvideOptions,
   SyncOptions,
   Paths,
   Get,

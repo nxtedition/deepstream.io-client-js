@@ -42,6 +42,37 @@ export default class RecordHandler<Records = Record<string, unknown>> {
     optionsOrRecursive?: ProvideOptions | boolean,
   ) => Disposer | void
 
+  put: (
+    name: string,
+    version: string,
+    data: Record<string, unknown> | null,
+    parent?: string,
+  ) => void
+
+  getAsync: {
+    <Name extends string>(
+      name: Name,
+      options: ObserveOptions,
+    ):
+      | { value: Lookup<Records, Name>; async: false }
+      | { value: Promise<Lookup<Records, Name>>; async: true }
+
+    <Name extends string, Path extends string | string[]>(
+      name: Name,
+      path: Path,
+      options?: ObserveOptions,
+    ):
+      | { value: Get<Lookup<Records, Name>, Path>; async: false }
+      | { value: Promise<Get<Lookup<Records, Name>, Path>>; async: true }
+
+    <Name extends string>(
+      name: Name,
+      state?: number,
+    ):
+      | { value: Lookup<Records, Name>; async: false }
+      | { value: Promise<Lookup<Records, Name>>; async: true }
+  }
+
   sync: (options?: SyncOptions) => Promise<void>
 
   set: {
@@ -287,12 +318,13 @@ export interface RecordStats {
   pruning: number
   patching: number
   subscriptions: number
+  listeners: number
 }
 
 export interface ProvideOptions {
   recursive?: boolean
   stringify?: ((input: unknown) => string) | null
-  mode: undefined | null | 'unicast'
+  mode?: null | 'unicast' | (string & {})
 }
 
 export interface SyncOptions {
