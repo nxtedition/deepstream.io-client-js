@@ -96,7 +96,7 @@ Connection.prototype._createEndpoint = function () {
     })
     this._endpoint.binaryType = 'nodebuffer'
     this._endpoint.onmessage = ({ data: buf }) => {
-      this._onMessage(buf.toString('utf8', buf[0] >= 128 ? buf[0] - 128 : 0, buf.length))
+      this._onMessage(buf.toString('utf8', buf[0] > 128 ? buf[0] - 128 : 0, buf.length))
     }
   } else {
     const decoder = new globalThis.TextDecoder()
@@ -104,7 +104,7 @@ Connection.prototype._createEndpoint = function () {
     this._endpoint.binaryType = 'arraybuffer'
     this._endpoint.onmessage = ({ data }) => {
       let buf = new Uint8Array(data)
-      if (buf[0] >= 128) {
+      if (buf[0] > 128) {
         buf = buf.subarray(buf[0] - 128)
       }
       this._onMessage(decoder.decode(buf))
