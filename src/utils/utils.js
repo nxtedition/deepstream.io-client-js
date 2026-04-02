@@ -83,6 +83,14 @@ export function setTimeout(callback, timeoutDuration) {
   }
 }
 
+export function setInterval(callback, intervalDuration) {
+  if (intervalDuration !== null) {
+    return setInterval(callback, intervalDuration)
+  } else {
+    return -1
+  }
+}
+
 export function compareRev(a, b) {
   if (!a) {
     return b ? -1 : 0

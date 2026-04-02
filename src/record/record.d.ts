@@ -1,15 +1,36 @@
 import type RecordHandler from './record-handler.js'
-import type { Get as _Get, AllUnionFields } from 'type-fest'
-export type { Paths } from 'type-fest'
+import type { Get, EmptyObject, SingleKeyObject } from 'type-fest'
+export type { Get, Paths, EmptyObject } from 'type-fest'
 
-// HACK: Wrap type-fest's Get to get rid of EmptyObject from union
-type RemoveSymbolKeys<T> = {
-  [K in keyof T as K extends symbol ? never : K]: T[K]
-}
-export type Get<BaseType, Path extends string | readonly string[]> = _Get<
-  RemoveSymbolKeys<AllUnionFields<BaseType>>,
-  Path
->
+// When getting, for convenience, we say the data might be partial under some
+// circumstances.
+//
+// When you e.g. do record.get or record.update, there is always a possibility
+// that the data object is empty. The naive correct type for that would be
+// `Data | EmptyObject`. However, that forces the user to always type guard
+// against the empty object case. This type tries to allow the user to skip
+// that check in some cases, where it should be safe to do so.
+export type GettablePossibleEmpty<Data> = keyof Data extends never
+  ? EmptyObject // If there are no keys at all
+  : Partial<Data> extends Data
+    ? // All properties in Data are already optional, so we can safely return it
+      // as is. The user just need to check the properties themselves instead.
+      Data
+    : SingleKeyObject<Data> extends never
+      ? // There are more than one property in Data, and some of them are
+          // required. That means that the user must always check for the empty
+          // object case.
+          Data | EmptyObject
+      : // There is exactly one property in Data, and it is required. In this
+        // particular case, we can safely use Data as the "empty" type, but
+        // with the single property turned optional.
+        {
+          [K in keyof Data]+?: Data[K]
+        }
+
+// When setting the data must fully adhere to the Data type, or exactly an
+// empty object.
+export type SettablePossibleEmpty<Data> = Data | EmptyObject
 
 export interface WhenOptions {
   signal?: AbortSignal
@@ -24,7 +45,6 @@ export interface UpdateOptions {
 }
 
 export interface ObserveOptions {
-  key?: string
   signal?: AbortSignal
   timeout?: number
   state?: number
@@ -47,21 +67,12 @@ export default class Record<Data = unknown> {
 
   ref(): Record<Data>
   unref(): Record<Data>
-  [Symbol.dispose](): void
-  subscribe(
-    callback: (record: Record<Data>, opaque: unknown) => void,
-    opaque?: unknown,
-  ): Record<Data>
-  unsubscribe(
-    callback: (record: Record<Data>, opaque: unknown) => void,
-    opaque?: unknown,
-  ): Record<Data>
+  subscribe(callback: (record: Record<Data>) => void, opaque?: unknown): Record<Data>
+  unsubscribe(callback: (record: Record<Data>) => void, opaque?: unknown): Record<Data>
 
   get: {
     // with path
     <P extends string | string[]>(path: P): Get<Data, P>
-    // with function mapper
-    <R>(fn: (data: Data) => R): R
     // without path
     (): Data
     (path: undefined | string | string[]): unknown
@@ -74,7 +85,7 @@ export default class Record<Data = unknown> {
       dataAtPath: unknown extends Get<Data, P> ? never : Get<Data, P>,
     ): void
     // without path
-    (data: Data): void
+    (data: SettablePossibleEmpty<Data>): void
   }
 
   when: {
@@ -86,13 +97,13 @@ export default class Record<Data = unknown> {
   update: {
     // without path
     (
-      updater: (data: Readonly<Data>, version: string) => Data,
+      updater: (data: Readonly<Data>) => SettablePossibleEmpty<Data>,
       options?: UpdateOptions,
     ): Promise<void>
     // with path
     <P extends string | string[]>(
       path: P,
-      updater: (dataAtPath: Readonly<Get<Data, P>>, version: string) => Get<Data, P>,
+      updater: (dataAtPath: Readonly<Get<Data, P>>) => Get<Data, P>,
       options?: UpdateOptions,
     ): Promise<void>
   }

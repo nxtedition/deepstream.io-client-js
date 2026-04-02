@@ -71,21 +71,21 @@ EventHandler.prototype.unsubscribe = function (name, callback) {
   }
 }
 
-EventHandler.prototype.on = function (name, callback) {
+EventHandler.on = function (name, callback) {
   this.subscribe(name, callback)
   return this
 }
 
-EventHandler.prototype.once = function (name, callback) {
+EventHandler.once = function (name, callback) {
   const fn = (...args) => {
-    this.unsubscribe(name, fn)
+    this.unsubscribe(fn)
     callback(...args)
   }
   this.subscribe(name, fn)
   return this
 }
 
-EventHandler.prototype.off = function (name, callback) {
+EventHandler.off = function (name, callback) {
   this.unsubscribe(name, callback)
   return this
 }

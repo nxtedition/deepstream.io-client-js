@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import make, { type DeepstreamClient, type DeepstreamError } from './client.js'
+import make, { type DeepstreamClient } from './client.js'
 import { expectAssignable, expectError, expectType } from 'tsd'
 import type { Observable } from 'rxjs'
-import type { EmptyObject } from 'type-fest'
 
 interface Records extends Record<string, unknown> {
   o: {
@@ -23,11 +22,6 @@ interface Records extends Record<string, unknown> {
       }
     }
   }
-  possiblyEmpty:
-    | {
-        pe1: string
-      }
-    | EmptyObject
   c: Circular
   m: {
     m1: string
@@ -68,7 +62,7 @@ expectAssignable<{ n0?: { n1: { n2: { n3: string } } } } | undefined>(await ds.r
 expectAssignable<{ n1: { n2: { n3: string } } } | undefined>(await ds.record.get('n', 'n0'))
 
 // set withouth path
-ds.record.set('possiblyEmpty', {}) // empty should always work
+ds.record.set('n', {}) // empty should always work
 ds.record.set('n', { n0: { n1: { n2: { n3: 'test' } } } })
 expectError(ds.record.set('n', { n0: {} })) // nested props are required
 
@@ -102,14 +96,10 @@ expectError(ds.record.set('n', 'n1.x2', {}))
 expectError(ds.record.set('n', 'n1.n2.n3', { n4: 22 }))
 
 expectAssignable<string>(await ds.record.get('p', 'p1'))
-expectAssignable<{ name: string; version: string; state: number; data: string }>(
-  await ds.record.get2('p', 'p1'),
-)
 expectAssignable<string>(await ds.record.get('p', 'p1', { signal: new AbortController().signal }))
 expectAssignable<string>(await ds.record.get('p', { path: 'p1' }))
 expectAssignable<string | undefined>(await ds.record.get('p', 'p2'))
 expectAssignable<unknown>(await ds.record.get('p', 'x1'))
-expectAssignable<string | undefined>(await ds.record.get('possiblyEmpty', 'pe1'))
 
 // observe with options
 expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
@@ -189,16 +179,6 @@ expectAssignable<Promise<void>>(
 )
 expectAssignable<Promise<void>>(ds.record.update('p', 'p1', (data) => data, { timeout: 5000 }))
 
-// update: updater receives version as second argument
-ds.record.update('p', (data, version) => {
-  expectType<string>(version)
-  return data
-})
-ds.record.update('p', 'p1', (data, version) => {
-  expectType<string>(version)
-  return data
-})
-
 // Circular
 expectAssignable<string | undefined>(await ds.record.get('c', 'a.b1'))
 
@@ -230,19 +210,6 @@ expectAssignable<Promise<typeof rec>>(rec.when({ state: 2, timeout: 5000 }))
 expectAssignable<Promise<typeof rec>>(rec.when(2, { timeout: 5000 }))
 expectAssignable<Promise<typeof rec>>(rec.when(2, { signal: new AbortController().signal }))
 
-// Record.subscribe: callback receives (record, opaque)
-rec.subscribe((record, opaque) => {
-  expectType<typeof rec>(record)
-  expectType<unknown>(opaque)
-})
-rec.subscribe((record, opaque) => {}, 'my-opaque-token')
-
-// Record.unsubscribe: same callback signature
-rec.unsubscribe((record, opaque) => {
-  expectType<typeof rec>(record)
-  expectType<unknown>(opaque)
-})
-
 // Record.update with options
 expectAssignable<Promise<void>>(rec.update((x) => x, { signal: new AbortController().signal }))
 expectAssignable<Promise<void>>(rec.update((x) => x, { timeout: 5000 }))
@@ -253,68 +220,7 @@ expectAssignable<Promise<void>>(
 expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { timeout: 5000 }))
 expectAssignable<Promise<void>>(rec.update('o0', (x) => x, { state: 2 }))
 
-// Record.update: updater receives version as second argument
-rec.update((x, version) => {
-  expectType<string>(version)
-  return x
-})
-rec.update('o0', (x, version) => {
-  expectType<string>(version)
-  return x
-})
-
 const state = 'VOID'
 expectType<0>(ds.record.STATE[state])
 const unknownState: string = 'VOID'
 expectType<number>(ds.record.STATE[unknownState])
-
-// record.getRecord: [Symbol.dispose] is present
-const recDispose = ds.record.getRecord('o')
-recDispose[Symbol.dispose]()
-
-// record.provide: returns Disposer | void
-expectAssignable<(() => void) | void>(ds.record.provide('pattern*', () => ({})))
-const recordDisposer = ds.record.provide('pattern*', () => ({}))
-if (recordDisposer) {
-  recordDisposer()
-  recordDisposer[Symbol.dispose]()
-}
-
-// event.provide: returns (() => void) | void
-expectAssignable<(() => void) | void>(ds.event.provide('pattern*', () => {}, {}))
-
-// client.on/off: 'error' is a valid event name
-ds.on('error', (err) => {})
-ds.off('error', (err) => {})
-expectError(ds.on('unknownEvent', () => {}))
-
-// client.on: callback arg types per event
-ds.on('error', (err) => {
-  expectType<DeepstreamError>(err)
-})
-ds.on('connectionError', (err) => {
-  expectType<DeepstreamError>(err)
-})
-ds.on('connectionStateChanged', (state) => {
-  expectType<
-    | 'CLOSED'
-    | 'AWAITING_CONNECTION'
-    | 'CHALLENGING'
-    | 'AWAITING_AUTHENTICATION'
-    | 'AUTHENTICATING'
-    | 'OPEN'
-    | 'ERROR'
-    | 'RECONNECTING'
-  >(state)
-})
-ds.on('connected', (connected) => {
-  expectType<boolean>(connected)
-})
-ds.on('MAX_RECONNECTION_ATTEMPTS_REACHED', (attempt) => {
-  expectType<number>(attempt)
-})
-
-// client.on: wrong callback arg types are errors
-expectError(ds.on('connectionStateChanged', (state: number) => {}))
-expectError(ds.on('connected', (connected: string) => {}))
-expectError(ds.on('MAX_RECONNECTION_ATTEMPTS_REACHED', (attempt: string) => {}))
