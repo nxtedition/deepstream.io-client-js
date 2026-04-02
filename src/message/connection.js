@@ -103,11 +103,15 @@ Connection.prototype._createEndpoint = function () {
     this._endpoint = new BrowserWebSocket(this._url)
     this._endpoint.binaryType = 'arraybuffer'
     this._endpoint.onmessage = ({ data }) => {
-      let buf = new Uint8Array(data)
-      if (buf[0] > 128) {
-        buf = buf.subarray(buf[0] - 128)
+      if (typeof data === 'string') {
+        this._onMessage(data)
+      } else {
+        let buf = new Uint8Array(data)
+        if (buf[0] > 128) {
+          buf = buf.subarray(buf[0] - 128)
+        }
+        this._onMessage(decoder.decode(buf))
       }
-      this._onMessage(decoder.decode(buf))
     }
   }
 
