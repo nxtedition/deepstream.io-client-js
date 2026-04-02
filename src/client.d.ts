@@ -3,14 +3,25 @@ import type { Paths, Get } from './record/record.js'
 import type RecordHandler from './record/record-handler.js'
 import type { RecordStats, ProvideOptions, SyncOptions } from './record/record-handler.js'
 import type EventHandler from './event/event-handler.js'
-import type { EventStats } from './event/event-handler.js'
+import type { EventStats, EventProvideOptions } from './event/event-handler.js'
 import type RpcHandler from './rpc/rpc-handler.js'
 import type { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
+
+export interface DeepstreamClientOptions {
+  reconnectIntervalIncrement?: number
+  maxReconnectInterval?: number
+  maxReconnectAttempts?: number
+  maxPacketSize?: number
+  batchSize?: number
+  schedule?: ((fn: () => void) => void) | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  logger?: any
+}
 
 export default function <
   Records extends Record<string, unknown> = Record<string, unknown>,
   Methods extends Record<string, RpcMethodDef> = Record<string, RpcMethodDef>,
->(url: string, options?: unknown): DeepstreamClient<Records, Methods>
+>(url: string, options?: DeepstreamClientOptions): DeepstreamClient<Records, Methods>
 
 export type {
   DsRecord,
@@ -19,9 +30,12 @@ export type {
   RpcHandler,
   RpcMethodDef,
   ProvideOptions,
+  EventProvideOptions,
   SyncOptions,
   Paths,
   Get,
+  ConnectionStateName,
+  DeepstreamErrorEventName,
 }
 
 type RecordStateConstants = Readonly<{
@@ -77,6 +91,36 @@ type EventConstants = Readonly<{
 }>
 type EventKey = keyof EventConstants
 type EventName = EventConstants[EventKey]
+type DeepstreamErrorEventName = Exclude<
+  EventName,
+  'connectionStateChanged' | 'connected' | 'MAX_RECONNECTION_ATTEMPTS_REACHED'
+>
+
+export interface DeepstreamError extends Error {
+  topic?: string
+  event?: EventName | null
+  data?: unknown
+}
+
+export interface DeepstreamMessage {
+  raw: string | null
+  topic: string | null
+  action: string | null
+  data: string[]
+}
+
+export interface DeepstreamClientEventMap {
+  connectionStateChanged: (state: ConnectionStateName) => void
+  connected: (connected: boolean) => void
+  MAX_RECONNECTION_ATTEMPTS_REACHED: (attempt: number) => void
+  error: (error: DeepstreamError) => void
+  recv: (message: DeepstreamMessage) => void
+  send: (message: DeepstreamMessage) => void
+}
+
+type DeepstreamErrorEventMap = {
+  [K in DeepstreamErrorEventName]: (error: DeepstreamError) => void
+}
 
 export interface DeepstreamClient<
   Records extends Record<string, unknown> = Record<string, unknown>,
@@ -87,11 +131,21 @@ export interface DeepstreamClient<
   rpc: RpcHandler<Methods>
   record: RecordHandler<Records>
   user: string | null
-  on: (evt: EventName, callback: (...args: unknown[]) => void) => void
-  off: (evt: EventName, callback: (...args: unknown[]) => void) => void
+  on<K extends keyof (DeepstreamClientEventMap & DeepstreamErrorEventMap)>(
+    evt: K,
+    callback: (DeepstreamClientEventMap & DeepstreamErrorEventMap)[K],
+  ): this
+  off<K extends keyof (DeepstreamClientEventMap & DeepstreamErrorEventMap)>(
+    evt: K,
+    callback: (DeepstreamClientEventMap & DeepstreamErrorEventMap)[K],
+  ): this
   getConnectionState: () => ConnectionStateName
   close: () => void
-  login: unknown
+  login(callback: (success: boolean, authData: unknown) => void): this
+  login(
+    authParams: Record<string, unknown>,
+    callback: (success: boolean, authData: unknown) => void,
+  ): this
   stats: {
     record: RecordStats
     rpc: RpcStats
