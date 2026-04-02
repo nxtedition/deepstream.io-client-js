@@ -3,7 +3,6 @@ import LegacyListener from '../utils/legacy-listener.js'
 import UnicastListener from '../utils/unicast-listener.js'
 import * as C from '../constants/constants.js'
 import * as rxjs from 'rxjs'
-import invariant from 'invariant'
 import jsonPath from '@nxtedition/json-path'
 import * as utils from '../utils/utils.js'
 import xuid from 'xuid'
@@ -121,10 +120,6 @@ class RecordHandler {
     this._stats = {
       updating: 0,
       created: 0,
-      destroyed: 0,
-      records: 0,
-      pruning: 0,
-      patching: 0,
     }
 
     this._syncQueue = []
@@ -162,12 +157,6 @@ class RecordHandler {
 
   _onPruning(rec, value) {
     if (value) {
-      this._stats.pruning += 1
-    } else {
-      this._stats.pruning -= 1
-    }
-
-    if (value) {
       this._pruning.add(rec)
     } else {
       this._pruning.delete(rec)
@@ -175,16 +164,10 @@ class RecordHandler {
   }
 
   _onUpdating(rec, value) {
-    const callbacks = this._updating.get(rec)
-
     if (value) {
-      invariant(!callbacks, 'updating callbacks must not exist')
-      this._stats.updating += 1
       this._updating.set(rec, [])
     } else {
-      invariant(callbacks, 'updating callbacks must exist')
-
-      this._stats.updating -= 1
+      const callbacks = this._updating.get(rec)
       this._updating.delete(rec)
       for (const callback of callbacks) {
         callback()
@@ -194,11 +177,8 @@ class RecordHandler {
 
   _onPatching(rec, value) {
     if (value) {
-      this._stats.patching += 1
       this._patching.set(rec, [])
     } else {
-      this._stats.patching -= 1
-
       const callbacks = this._patching.get(rec)
       this._patching.delete(rec)
       for (const callback of callbacks) {
@@ -213,13 +193,18 @@ class RecordHandler {
 
   get stats() {
     let subscriptions = 0
-    for (const listener of this._listeners.values()) {
-      subscriptions += listener.subscriptions ?? 0
+    for (const { stats } of this._listeners.values()) {
+      subscriptions += stats.subscriptions ?? 0
     }
 
     return {
       ...this._stats,
       subscriptions,
+      patching: this._patching.size,
+      updating: this._updating.size,
+      putting: this._putting.size,
+      records: this._records.size,
+      listeners: this._listeners.size,
     }
   }
 

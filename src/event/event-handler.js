@@ -79,7 +79,7 @@ EventHandler.prototype.on = function (name, callback) {
 EventHandler.prototype.once = function (name, callback) {
   const fn = (...args) => {
     this.unsubscribe(name, fn)
-    callback(...args)
+    callback(name, ...args)
   }
   this.subscribe(name, fn)
   return this
