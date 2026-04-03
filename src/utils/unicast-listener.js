@@ -55,6 +55,8 @@ export default class Listener {
 
   _$destroy() {
     this._reset()
+
+    this._connection.sendMsg(this._topic, C.ACTIONS.UNLISTEN, [this._pattern])
   }
 
   _$onMessage(message) {
@@ -77,12 +79,14 @@ export default class Listener {
       }
 
       if (value$) {
+        let errored = false
         const subscription = value$.pipe(PIPE).subscribe({
           next: (data) => {
             const version = `INF-${h64ToString(data)}`
             this._connection.sendMsg(this._topic, C.ACTIONS.UPDATE, [name, version, data])
           },
           error: (err) => {
+            errored = true
             this._error(name, err)
 
             this._subscriptions.delete(name)
@@ -90,7 +94,9 @@ export default class Listener {
           },
         })
 
-        this._subscriptions.set(name, subscription)
+        if (!errored) {
+          this._subscriptions.set(name, subscription)
+        }
       } else {
         this._connection.sendMsg(this._topic, C.ACTIONS.LISTEN_REJECT, [this._pattern, name])
       }
@@ -129,7 +135,5 @@ export default class Listener {
       subscription.unsubscribe()
     }
     this._subscriptions.clear()
-
-    this._connection.sendMsg(this._topic, C.ACTIONS.UNLISTEN, [this._pattern])
   }
 }

@@ -157,6 +157,10 @@ EventHandler.prototype._$handle = function (message) {
 }
 
 EventHandler.prototype._onConnectionStateChange = function (connected) {
+  for (const listener of this._listeners.values()) {
+    listener._$onConnectionStateChange(connected)
+  }
+
   if (connected) {
     for (const eventName of this._emitter.eventNames()) {
       this._connection.sendMsg(C.TOPIC.EVENT, C.ACTIONS.SUBSCRIBE, [eventName])

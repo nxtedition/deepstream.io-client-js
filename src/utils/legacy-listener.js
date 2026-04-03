@@ -38,12 +38,12 @@ export default class Listener {
   _$onMessage(message) {
     if (!this.connected) {
       this._client._$onError(
-        C.TOPIC.RECORD,
+        this._topic,
         C.EVENT.NOT_CONNECTED,
         new Error('received message while not connected'),
         message,
       )
-      return
+      return true
     }
 
     const name = message.data[1]
@@ -192,13 +192,15 @@ export default class Listener {
             provider.patternSubscription = rxjs.of(ret$).subscribe(provider)
           }
         } catch (err) {
+          provider.stop()
+          this._subscriptions.delete(provider.name)
           this._error(provider.name, err)
         }
       }
 
-      provider.start()
-
       this._subscriptions.set(provider.name, provider)
+
+      provider.start()
     } else if (message.action === C.ACTIONS.LISTEN_ACCEPT) {
       const provider = this._subscriptions.get(name)
       if (!provider?.value$) {
