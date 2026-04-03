@@ -633,6 +633,8 @@ class RecordHandler {
         signal,
         /** @readonly @type {boolean} */
         dataOnly,
+        /** @readonly @type {number} */
+        timeoutValue: timeout,
 
         /** @type {Record|null} */
         record: null,

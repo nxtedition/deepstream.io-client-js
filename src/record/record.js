@@ -293,7 +293,7 @@ class Record {
         }
 
         this.unref()
-        this.unsubscribe(onUpdate)
+        this.unsubscribe(onUpdate, context)
 
         if (context.timeout != null) {
           timers.clearTimeout(context.timeout)
