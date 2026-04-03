@@ -151,10 +151,11 @@ Connection.prototype.send = function (message) {
   }
 
   if (this._endpoint._socket && !this._corked) {
-    this._endpoint._socket.cork()
+    const socket = this._endpoint._socket
     this._corked = true
+    socket.cork()
     setTimeout(() => {
-      this._endpoint._socket.uncork()
+      socket.uncork()
       this._corked = false
     }, 1)
   }

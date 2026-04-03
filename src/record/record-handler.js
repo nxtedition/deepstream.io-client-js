@@ -71,6 +71,10 @@ function onUpdate(record, subscription) {
 }
 
 function onTimeout(subscription) {
+  if (!subscription.record) {
+    return
+  }
+
   const expected = C.RECORD_STATE_NAME[subscription.state]
   const current = C.RECORD_STATE_NAME[subscription.record.state]
 
@@ -422,7 +426,7 @@ class RecordHandler {
       throw new Error('invalid argument: data')
     }
 
-    if (parent != null && (typeof version !== 'string' || !/^\d+-/.test(version))) {
+    if (parent != null && (typeof parent !== 'string' || !/^\d+-/.test(parent))) {
       throw new Error('invalid argument: parent')
     }
 
