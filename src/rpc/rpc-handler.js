@@ -168,10 +168,11 @@ RpcHandler.prototype._onConnectionStateChange = function (connected) {
     }
   } else {
     const err = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })
-    for (const rpc of this._rpcs.values()) {
+    const rpcs = this._rpcs
+    this._rpcs = new Map()
+    for (const rpc of rpcs.values()) {
       rpc.callback(err)
     }
-    this._rpcs.clear()
   }
 }
 
