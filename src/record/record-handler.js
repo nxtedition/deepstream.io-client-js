@@ -604,19 +604,19 @@ class RecordHandler {
     }
 
     if (!Number.isInteger(state) || state < 0) {
-      throw new Error('invalid argument: state')
+      throw new Error(`invalid argument "state": ${state}`)
     }
 
     if (!Number.isInteger(timeout) || timeout < 0) {
-      throw new Error('invalid argument: timeout')
+      throw new Error(`invalid argument "timeout": ${timeout}`)
     }
 
     if (typeof dataOnly !== 'boolean') {
-      throw new Error('invalid argument: dataOnly')
+      throw new Error(`invalid argument "dataOnly": ${dataOnly}`)
     }
 
     if (typeof sync !== 'boolean') {
-      throw new Error('invalid argument: sync')
+      throw new Error(`invalid argument "sync": ${sync}`)
     }
 
     return new rxjs.Observable((subscriber) => {
