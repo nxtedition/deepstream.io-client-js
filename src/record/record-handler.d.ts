@@ -4,11 +4,6 @@ import type { Get, UpdateOptions, ObserveOptions, ObserveOptionsWithPath } from 
 
 type Lookup<Table, Name> = Name extends keyof Table ? Table[Name] : unknown
 
-type Disposer = {
-  (): void
-  [Symbol.dispose](): void
-}
-
 export default class RecordHandler<Records = Record<string, unknown>> {
   VOID: 0
   CLIENT: 1
@@ -40,7 +35,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
     pattern: string,
     callback: (key: string) => unknown,
     optionsOrRecursive?: ProvideOptions | boolean,
-  ) => Disposer | void
+  ) => Disposable
 
   put: (
     name: string,

@@ -250,8 +250,7 @@ class RecordHandler {
     }
 
     if (this._listeners.has(pattern)) {
-      this._client._$onError(C.TOPIC.RECORD, C.EVENT.LISTENER_EXISTS, new Error(pattern))
-      return
+      throw new Error(`pattern already provided: ${pattern}`)
     }
 
     const listener =
