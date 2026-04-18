@@ -68,7 +68,7 @@ export default class Listener {
           name,
           'invalid accept: listener exists (pattern:' + this._pattern + ' name:' + name + ')',
         )
-        return
+        return true
       }
 
       let value$
