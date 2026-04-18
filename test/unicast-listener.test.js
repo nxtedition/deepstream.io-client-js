@@ -13,10 +13,12 @@ function createMockConnection(connected = true) {
 }
 
 function createMockClient() {
+  /** @type {any[]} */
+  const errors = []
   return {
-    errors: [],
+    errors,
     _$onError(topic, event, err, data) {
-      this.errors.push({ topic, event, err, data })
+      errors.push({ topic, event, err, data })
     },
   }
 }
@@ -32,6 +34,7 @@ function msg(action, data) {
   return { action, data }
 }
 
+/** @type {any} */
 let Listener
 
 describe('UnicastListener', async () => {
@@ -361,6 +364,248 @@ describe('UnicastListener', async () => {
 
       const count2 = connection.messages.filter((m) => m.action === C.ACTIONS.UPDATE).length
       assert.equal(count2, count1, 'should deduplicate identical serialized values')
+    })
+
+    it('rejects BigInt values with cause attached', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject({ n: 5n })
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid Object value')
+      assert.ok(client.errors[0].err.cause, 'should have cause')
+      assert.ok(/BigInt/.test(client.errors[0].err.cause.message))
+      assert.deepEqual(client.errors[0].err.data.value, { n: 5n })
+      const rejectMsg = connection.messages.find((m) => m.action === C.ACTIONS.LISTEN_REJECT)
+      assert.ok(rejectMsg, 'should send LISTEN_REJECT on stringify failure')
+    })
+
+    it('rejects circular references with cause attached', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      /** @type {any} */
+      const circular = { a: 1 }
+      circular.self = circular
+      const subject = new rxjs.BehaviorSubject(circular)
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid Object value')
+      assert.ok(client.errors[0].err.cause, 'should have cause')
+      assert.ok(/circular/i.test(client.errors[0].err.cause.message))
+    })
+
+    it('accepts arrays', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject([1, 2, 3])
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 0)
+      const updateMsg = connection.messages.find((m) => m.action === C.ACTIONS.UPDATE)
+      assert.ok(updateMsg)
+      assert.equal(updateMsg.data[2], '[1,2,3]')
+    })
+
+    it('rejects non-POJO objects (Date)', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject(new Date(0))
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid value')
+    })
+
+    it('rejects non-POJO objects (Map)', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject(new Map([['k', 'v']]))
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid value')
+    })
+
+    it('rejects class instances', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      class Foo {
+        constructor() {
+          this.x = 1
+        }
+      }
+      const subject = new rxjs.BehaviorSubject(new Foo())
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid value')
+    })
+
+    it('rejects primitives (number)', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject(42)
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid value')
+    })
+
+    it('rejects null values', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject(null)
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      assert.equal(client.errors.length, 1)
+      assert.equal(client.errors[0].err.message, 'invalid value')
+    })
+
+    it('UPDATE carries INF-<hash> version', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject({ k: 1 })
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      const updateMsg = connection.messages.find((m) => m.action === C.ACTIONS.UPDATE)
+      assert.ok(updateMsg)
+      assert.match(updateMsg.data[1], /^INF-/)
+      assert.equal(updateMsg.data[0], 'test/1')
+    })
+  })
+
+  describe('_$onMessage - async errors', () => {
+    it('async subject error removes from map and sends LISTEN_REJECT', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject('{"ok":1}')
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      connection.messages.length = 0
+
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+      assert.equal(listener.stats.subscriptions, 1)
+
+      connection.messages.length = 0
+      client.errors.length = 0
+
+      subject.error(new Error('upstream failed'))
+
+      assert.equal(listener.stats.subscriptions, 0)
+      assert.equal(client.errors.length, 1)
+      const rejectMsg = connection.messages.find((m) => m.action === C.ACTIONS.LISTEN_REJECT)
+      assert.ok(rejectMsg, 'should send LISTEN_REJECT on async error')
+      assert.deepEqual(rejectMsg.data, ['test/.*', 'test/1'])
+    })
+
+    it('server LISTEN_REJECT after client-initiated async error is silently tolerated', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject('{"ok":1}')
+
+      const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => subject, handler, {})
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['test/.*', 'test/1']))
+
+      subject.error(new Error('upstream failed'))
+      client.errors.length = 0
+
+      const result = listener._$onMessage(msg(C.ACTIONS.LISTEN_REJECT, ['test/.*', 'test/1']))
+
+      assert.equal(result, true)
+      assert.equal(client.errors.length, 0, 'no spurious invalid-remove error')
+    })
+  })
+
+  describe('EVENT topic', () => {
+    it('works with EVENT topic', async () => {
+      const connection = createMockConnection(true)
+      const client = createMockClient()
+      const handler = createMockHandler(connection, client)
+      const rxjs = await import('rxjs')
+
+      const subject = new rxjs.BehaviorSubject('{"k":1}')
+
+      const listener = new Listener(C.TOPIC.EVENT, 'evt/.*', () => subject, handler, {})
+
+      assert.equal(connection.messages[0].topic, C.TOPIC.EVENT)
+
+      connection.messages.length = 0
+      listener._$onMessage(msg(C.ACTIONS.LISTEN_ACCEPT, ['evt/.*', 'evt/1']))
+
+      const updateMsg = connection.messages.find((m) => m.action === C.ACTIONS.UPDATE)
+      assert.ok(updateMsg)
+      assert.equal(updateMsg.topic, C.TOPIC.EVENT)
     })
   })
 })
