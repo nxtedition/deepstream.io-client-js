@@ -107,11 +107,6 @@ export default class Listener {
       if (subscription) {
         this._subscriptions.delete(name)
         subscription.unsubscribe()
-      } else {
-        this._error(
-          name,
-          'invalid remove: listener missing (pattern:' + this._pattern + ' name:' + name + ')',
-        )
       }
     } else {
       return false

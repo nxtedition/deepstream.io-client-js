@@ -185,17 +185,17 @@ describe('UnicastListener', async () => {
       assert.equal(listener.stats.subscriptions, 0)
     })
 
-    it('errors on removal of unknown subscription', () => {
+    it('silently ignores removal of unknown subscription', () => {
       const connection = createMockConnection(true)
       const client = createMockClient()
       const handler = createMockHandler(connection, client)
 
       const listener = new Listener(C.TOPIC.RECORD, 'test/.*', () => null, handler, {})
 
-      listener._$onMessage(msg(C.ACTIONS.LISTEN_REJECT, ['test/.*', 'test/unknown']))
+      const result = listener._$onMessage(msg(C.ACTIONS.LISTEN_REJECT, ['test/.*', 'test/unknown']))
 
-      assert.equal(client.errors.length, 1)
-      assert.ok(String(client.errors[0].err).includes('invalid remove'))
+      assert.equal(result, true)
+      assert.equal(client.errors.length, 0)
     })
   })
 
