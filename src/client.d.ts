@@ -7,13 +7,28 @@ import type { EventStats, EventProvideOptions } from './event/event-handler.js'
 import type RpcHandler from './rpc/rpc-handler.js'
 import type { RpcStats, RpcMethodDef } from './rpc/rpc-handler.js'
 
+export interface IdleDeadline {
+  /**
+   * The read-only **`didTimeout`** property on the IdleDeadline interface is a Boolean value which indicates whether or not the idle callback is being invoked because the timeout interval specified when Window.requestIdleCallback() was called has expired.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IdleDeadline/didTimeout)
+   */
+  readonly didTimeout: boolean
+  /**
+   * The **`timeRemaining()`** method on the IdleDeadline interface returns the estimated number of milliseconds remaining in the current idle period. The callback can call this method at any time to determine how much time it can continue to work before it must return. For example, if the callback finishes a task and has another one to begin, it can call timeRemaining() to see if there's enough time to complete the next task. If there isn't, the callback can just return immediately, or look for other work to do with the remaining time.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IdleDeadline/timeRemaining)
+   */
+  timeRemaining(): DOMHighResTimeStamp
+}
+
 export interface DeepstreamClientOptions {
   reconnectIntervalIncrement?: number
   maxReconnectInterval?: number
   maxReconnectAttempts?: number
   maxPacketSize?: number
   batchSize?: number
-  schedule?: ((fn: () => void) => void) | null
+  schedule?: ((fn: (deadline?: IdleDeadline) => void) => void) | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   logger?: any
 }
