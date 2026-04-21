@@ -98,6 +98,11 @@ Connection.prototype._createEndpoint = function () {
     this._endpoint.onmessage = ({ data: buf }) => {
       this._onMessage(buf.toString('utf8', buf[0] > 128 ? buf[0] - 128 : 0))
     }
+    this._endpoint.once('open', () => {
+      if (typeof this._endpoint._socket?.setTypeOfService === 'function') {
+        this._endpoint._socket.setTypeOfService(0x88)
+      }
+    })
   } else {
     const decoder = new globalThis.TextDecoder()
     this._endpoint = new BrowserWebSocket(this._url)
