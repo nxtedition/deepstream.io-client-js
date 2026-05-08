@@ -19,7 +19,8 @@
     ".": "./lib/client.js"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "browser": {
     "ws": false
