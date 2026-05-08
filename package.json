@@ -37,6 +37,9 @@
       "prettier --write"
     ]
   },
+  "tsd": {
+    "directory": "src"
+  },
   "prettier": {
     "printWidth": 100,
     "semi": false,
