@@ -35,3 +35,4 @@ test-page-webpack/dist
 package-lock.json
 yarn.lock
 bencmarks/deepstream.io-client-js
+lib

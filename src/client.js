@@ -8,7 +8,7 @@ import defaultOptions from './default-options.js'
 import xuid from 'xuid'
 import * as utils from './utils/utils.js'
 
-const Client = function (url, options) {
+function Client(url, options) {
   this._url = url
   this._options = this._getOptions(options || {})
 
