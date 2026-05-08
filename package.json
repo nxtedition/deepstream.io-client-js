@@ -25,7 +25,7 @@
     "ws": false
   },
   "scripts": {
-    "build": "rimraf lib && tsc -p tsconfig.build.json; node scripts/copy-dts.mjs",
+    "build": "rimraf lib && tsc -p tsconfig.build.json && node scripts/copy-dts.mjs",
     "prepublishOnly": "yarn test:types && pinst --disable && yarn build",
     "postpublish": "pinst --enable",
     "prepare": "husky",
