@@ -35,7 +35,7 @@ export default class RecordHandler<Records = Record<string, unknown>> {
     pattern: string,
     callback: (key: string) => unknown,
     optionsOrRecursive?: ProvideOptions | boolean,
-  ) => Disposable
+  ) => (() => void) & Disposable
 
   put: (
     name: string,

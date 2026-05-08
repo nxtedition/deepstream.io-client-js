@@ -19,7 +19,7 @@ export interface IdleDeadline {
    *
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/IdleDeadline/timeRemaining)
    */
-  timeRemaining(): DOMHighResTimeStamp
+  timeRemaining(): number
 }
 
 export interface DeepstreamClientOptions {
