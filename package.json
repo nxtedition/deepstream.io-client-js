@@ -16,7 +16,8 @@
   "main": "lib/client.js",
   "types": "lib/client.d.ts",
   "exports": {
-    ".": "./lib/client.js"
+    ".": "./lib/client.js",
+    "./mock": "./lib/mock/index.js"
   },
   "files": [
     "lib",
