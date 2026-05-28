@@ -1,7 +1,7 @@
 import * as C from '../constants/constants.js'
 import * as messageBuilder from '../message/message-builder.js'
 
-const RpcResponse = function (connection, name, id) {
+function RpcResponse(connection, name, id) {
   this._connection = connection
   this._name = name
   this._id = id

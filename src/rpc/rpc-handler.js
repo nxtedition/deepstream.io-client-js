@@ -4,7 +4,7 @@ import * as messageParser from '../message/message-parser.js'
 import * as messageBuilder from '../message/message-builder.js'
 import xuid from 'xuid'
 
-const RpcHandler = function (options, connection, client) {
+function RpcHandler(options, connection, client) {
   this._options = options
   this._connection = connection
   this._client = client

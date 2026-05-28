@@ -6,7 +6,7 @@ import UnicastListener from '../utils/unicast-listener.js'
 import EventEmitter from 'component-emitter2'
 import * as rxjs from 'rxjs'
 
-const EventHandler = function (options, connection, client) {
+function EventHandler(options, connection, client) {
   this._options = options
   this._connection = connection
   this._client = client
