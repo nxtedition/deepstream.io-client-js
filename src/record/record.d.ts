@@ -1,15 +1,6 @@
 import type RecordHandler from './record-handler.js'
-import type { Get as _Get, AllUnionFields } from 'type-fest'
-export type { Paths } from 'type-fest'
-
-// HACK: Wrap type-fest's Get to get rid of EmptyObject from union
-type RemoveSymbolKeys<T> = {
-  [K in keyof T as K extends symbol ? never : K]: T[K]
-}
-export type Get<BaseType, Path extends string | readonly string[]> = _Get<
-  RemoveSymbolKeys<AllUnionFields<BaseType>>,
-  Path
->
+import type { Get } from 'type-fest'
+export type { Get, Paths } from 'type-fest'
 
 export interface WhenOptions {
   signal?: AbortSignal

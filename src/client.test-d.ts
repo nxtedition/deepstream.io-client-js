@@ -2,7 +2,7 @@
 import make, { type DeepstreamClient, type DeepstreamError } from './client.js'
 import { expectAssignable, expectError, expectType } from 'tsd'
 import type { Observable } from 'rxjs'
-import type { EmptyObject } from 'type-fest'
+import type { EmptyObject } from './record/resolve-type.js'
 
 interface Records extends Record<string, unknown> {
   o: {
@@ -23,11 +23,9 @@ interface Records extends Record<string, unknown> {
       }
     }
   }
-  possiblyEmpty:
-    | {
-        pe1: string
-      }
-    | EmptyObject
+  possiblyEmpty: {
+    pe1: string
+  }
   c: Circular
   m: {
     m1: string
@@ -91,7 +89,7 @@ ds.record.set(`${id}:domain`, 'd2.d3', 'test')
 expectError(ds.record.set(`${id}:domain`, 'd2.d3', 22))
 ds.record.set(`${id}:domain`, ['d2', 'd3'] as const, 'test')
 
-expectAssignable<string>(await ds.record.get(`${id}:domain`, 'd2.d3'))
+expectAssignable<string | undefined>(await ds.record.get(`${id}:domain`, 'd2.d3'))
 
 // errors
 expectError(ds.record.set('o', 'o0.o1', { o2: { o3: 0 } }))
@@ -101,31 +99,35 @@ expectError(ds.record.set('n', 'n0.x2', 22))
 expectError(ds.record.set('n', 'n1.x2', {}))
 expectError(ds.record.set('n', 'n1.n2.n3', { n4: 22 }))
 
-expectAssignable<string>(await ds.record.get('p', 'p1'))
-expectAssignable<{ name: string; version: string; state: number; data: string }>(
+expectAssignable<string | undefined>(await ds.record.get('p', 'p1'))
+expectAssignable<{ name: string; version: string; state: number; data: string | undefined }>(
   await ds.record.get2('p', 'p1'),
 )
-expectAssignable<string>(await ds.record.get('p', 'p1', { signal: new AbortController().signal }))
-expectAssignable<string>(await ds.record.get('p', { path: 'p1' }))
+expectAssignable<string | undefined>(
+  await ds.record.get('p', 'p1', { signal: new AbortController().signal }),
+)
+expectAssignable<string | undefined>(await ds.record.get('p', { path: 'p1' }))
 expectAssignable<string | undefined>(await ds.record.get('p', 'p2'))
 expectAssignable<unknown>(await ds.record.get('p', 'x1'))
 expectAssignable<string | undefined>(await ds.record.get('possiblyEmpty', 'pe1'))
 
 // observe with options
-expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
+expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } } | EmptyObject>>(
   ds.record.observe('p', { signal: new AbortController().signal }),
 )
-expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
+expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } } | EmptyObject>>(
   ds.record.observe('p', { timeout: 5000 }),
 )
-expectAssignable<Observable<string>>(
+expectAssignable<Observable<string | undefined>>(
   ds.record.observe('p', 'p1', { signal: new AbortController().signal }),
 )
-expectAssignable<Observable<string>>(ds.record.observe('p', { path: 'p1', timeout: 5000 }))
-expectAssignable<Observable<string>>(
+expectAssignable<Observable<string | undefined>>(
+  ds.record.observe('p', { path: 'p1', timeout: 5000 }),
+)
+expectAssignable<Observable<string | undefined>>(
   ds.record.observe('p', 'p1', 2, { signal: new AbortController().signal }),
 )
-expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } }>>(
+expectAssignable<Observable<{ p1: string; p2?: string; p3: { p4: string } } | EmptyObject>>(
   ds.record.observe('p', 2, { timeout: 5000 }),
 )
 
@@ -135,7 +137,7 @@ expectAssignable<
     name: string
     version: string
     state: number
-    data: { p1: string; p2?: string; p3: { p4: string } }
+    data: { p1: string; p2?: string; p3: { p4: string } } | EmptyObject
   }>
 >(ds.record.observe2('p', { signal: new AbortController().signal }))
 expectAssignable<
@@ -143,7 +145,7 @@ expectAssignable<
     name: string
     version: string
     state: number
-    data: { p1: string; p2?: string; p3: { p4: string } }
+    data: { p1: string; p2?: string; p3: { p4: string } } | EmptyObject
   }>
 >(ds.record.observe2('p', { timeout: 5000 }))
 expectAssignable<
@@ -151,7 +153,7 @@ expectAssignable<
     name: string
     version: string
     state: number
-    data: string
+    data: string | undefined
   }>
 >(ds.record.observe2('p', 'p1', { signal: new AbortController().signal }))
 expectAssignable<
@@ -159,7 +161,7 @@ expectAssignable<
     name: string
     version: string
     state: number
-    data: string
+    data: string | undefined
   }>
 >(ds.record.observe2('p', { path: 'p1', timeout: 5000 }))
 expectAssignable<
@@ -167,7 +169,7 @@ expectAssignable<
     name: string
     version: string
     state: number
-    data: string
+    data: string | undefined
   }>
 >(ds.record.observe2('p', 'p1', 2, { signal: new AbortController().signal }))
 expectAssignable<
@@ -175,7 +177,7 @@ expectAssignable<
     name: string
     version: string
     state: number
-    data: { p1: string; p2?: string; p3: { p4: string } }
+    data: { p1: string; p2?: string; p3: { p4: string } } | EmptyObject
   }>
 >(ds.record.observe2('p', 2, { timeout: 5000 }))
 
