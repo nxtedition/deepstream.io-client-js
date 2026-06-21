@@ -54,7 +54,12 @@ RpcHandler.prototype.provide = function (name, callback) {
     this._connection.sendMsg(C.TOPIC.RPC, C.ACTIONS.SUBSCRIBE, [name])
   }
 
-  return () => this.unprovide(name)
+  const disposer = () => {
+    this.unprovide(name)
+  }
+  disposer[Symbol.dispose] = disposer
+
+  return disposer
 }
 
 RpcHandler.prototype.unprovide = function (name) {

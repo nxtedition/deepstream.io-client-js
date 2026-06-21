@@ -129,10 +129,14 @@ EventHandler.prototype.provide = function (pattern, callback, options) {
       : new LegacyListener(C.TOPIC.EVENT, pattern, callback, this, options)
 
   this._listeners.set(pattern, listener)
-  return () => {
+
+  const disposer = () => {
     listener._$destroy()
     this._listeners.delete(pattern)
   }
+  disposer[Symbol.dispose] = disposer
+
+  return disposer
 }
 
 EventHandler.prototype._$handle = function (message) {
