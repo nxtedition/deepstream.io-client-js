@@ -6,6 +6,7 @@
  *  - event.provide() throws — not implemented
  */
 import type {
+  ConnectionStats,
   DeepstreamClient,
   DsRecord,
   EventHandler,
@@ -100,13 +101,24 @@ export class MockRpcHandler<
     (data: unknown, response: MockRpcResponse<unknown>) => unknown
   >()
   private _pendingRpcs = 0
+  private _madeRpcs = 0
+  private _completedRpcs = 0
+  private _failedRpcs = 0
 
   get connected(): boolean {
     return true
   }
 
   get stats(): RpcStats {
-    return { listeners: this._providers.size, rpcs: this._pendingRpcs }
+    return {
+      listeners: this._providers.size,
+      rpcs: this._pendingRpcs,
+      oldestPendingMs: 0,
+      made: this._madeRpcs,
+      completed: this._completedRpcs,
+      failed: this._failedRpcs,
+      droppedNotConnected: 0,
+    }
   }
 
   provide<Name extends string & keyof Methods>(
@@ -153,6 +165,8 @@ export class MockRpcHandler<
   ): Promise<unknown> | void {
     const provider = this._providers.get(name)
     if (!provider) {
+      this._madeRpcs++
+      this._failedRpcs++
       const err = Object.assign(new Error('NO_RPC_PROVIDER'), {
         rpcName: name,
         rpcData: data,
@@ -177,6 +191,11 @@ export class MockRpcHandler<
 
     const done = (err: unknown, val?: unknown) => {
       this._pendingRpcs--
+      if (err) {
+        this._failedRpcs++
+      } else {
+        this._completedRpcs++
+      }
       if (callback) {
         callback(err, val)
       } else if (err) {
@@ -187,6 +206,7 @@ export class MockRpcHandler<
     }
 
     this._pendingRpcs++
+    this._madeRpcs++
     const response = new MockRpcResponse<unknown>(
       (val) => done(null, val),
       (err) => done(err),
@@ -221,6 +241,9 @@ export class MockRpcHandler<
 
   cleanup(): void {
     this._providers.clear()
+    this._madeRpcs = 0
+    this._completedRpcs = 0
+    this._failedRpcs = 0
   }
 }
 
@@ -364,6 +387,7 @@ export class MockDeepstreamClient<
 
   private _nuidCounter = 0
   private _listeners = new Map<string, Set<(...args: unknown[]) => void>>()
+  private _connectedAt = Date.now()
 
   static create = function create<
     Records extends Record<string, unknown>,
@@ -433,8 +457,19 @@ export class MockDeepstreamClient<
     return null
   }
 
-  get stats(): { record: RecordStats; rpc: RpcStats; event: EventStats } {
+  get stats(): {
+    connection: ConnectionStats
+    record: RecordStats
+    rpc: RpcStats
+    event: EventStats
+  } {
     return {
+      connection: {
+        state: 'OPEN',
+        connectedSinceMs: Date.now() - this._connectedAt,
+        reconnects: 0,
+        droppedSends: 0,
+      },
       rpc: this.rpc.stats,
       event: this.event.stats,
       record: this.record.stats,
@@ -545,6 +580,7 @@ export class MockRecordHandler<
       destroyed: 0,
       pruning: 0,
       patching: 0,
+      putting: 0,
     }
   }
 

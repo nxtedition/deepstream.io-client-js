@@ -115,8 +115,8 @@ class RecordHandler {
 
     this._connected = 0
     this._stats = {
-      updating: 0,
       created: 0,
+      destroyed: 0,
     }
 
     this._syncQueue = []
@@ -142,8 +142,6 @@ class RecordHandler {
         this._records.delete(rec.name)
       }
 
-      this._stats.pruning -= pruning.size
-      this._stats.records -= pruning.size
       this._stats.destroyed += pruning.size
 
       this._pruningTimeout.refresh()
@@ -197,6 +195,7 @@ class RecordHandler {
     return {
       ...this._stats,
       subscriptions,
+      pruning: this._pruning.size,
       patching: this._patching.size,
       updating: this._updating.size,
       putting: this._putting.size,
@@ -227,7 +226,6 @@ class RecordHandler {
 
     if (!record) {
       record = new Record(name, this)
-      this._stats.records += 1
       this._stats.created += 1
       this._records.set(name, record)
     }
@@ -258,13 +256,11 @@ class RecordHandler {
         ? new UnicastListener(C.TOPIC.RECORD, pattern, callback, this, options)
         : new LegacyListener(C.TOPIC.RECORD, pattern, callback, this, options)
 
-    this._stats.listeners += 1
     this._listeners.set(pattern, listener)
 
     const disposer = () => {
       listener._$destroy()
 
-      this._stats.listeners -= 1
       this._listeners.delete(pattern)
     }
     disposer[Symbol.dispose] = disposer

@@ -120,6 +120,13 @@ export interface DeepstreamError extends Error {
   data?: unknown
 }
 
+export interface ConnectionStats {
+  state: ConnectionStateName
+  connectedSinceMs: number
+  reconnects: number
+  droppedSends: number
+}
+
 export interface DeepstreamMessage {
   raw: string | null
   topic: string | null
@@ -165,6 +172,7 @@ export interface DeepstreamClient<
     callback: (success: boolean, authData: unknown) => void,
   ): this
   stats: {
+    connection: ConnectionStats
     record: RecordStats
     rpc: RpcStats
     event: EventStats

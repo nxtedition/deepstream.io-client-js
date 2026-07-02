@@ -32,6 +32,11 @@ export default function Connection(client, url, options) {
   this._reconnectTimeout = null
   this._reconnectionAttempt = 0
   this._endpoint = null
+  this._connectedAt = 0
+  this._stats = {
+    reconnects: 0,
+    droppedSends: 0,
+  }
 
   this._processingRecv = false
   this._recvMessages = this._recvMessages.bind(this)
@@ -49,6 +54,17 @@ Emitter(Connection.prototype)
 Object.defineProperty(Connection.prototype, 'connected', {
   get: function connected() {
     return this._state === C.CONNECTION_STATE.OPEN
+  },
+})
+
+Object.defineProperty(Connection.prototype, 'stats', {
+  get: function stats() {
+    return {
+      ...this._stats,
+      state: this._state,
+      connectedSinceMs:
+        this._state === C.CONNECTION_STATE.OPEN ? Date.now() - this._connectedAt : 0,
+    }
   },
 })
 
@@ -141,10 +157,12 @@ Connection.prototype.send = function (message) {
         .split(C.MESSAGE_PART_SEPERATOR)
         .map((x) => x.slice(0, 256)),
     )
+    this._stats.droppedSends += 1
     return false
   }
 
   if (!this._endpoint) {
+    this._stats.droppedSends += 1
     return false
   }
 
@@ -152,6 +170,7 @@ Connection.prototype.send = function (message) {
     this._state !== C.CONNECTION_STATE.OPEN ||
     this._endpoint.readyState !== this._endpoint.OPEN
   ) {
+    this._stats.droppedSends += 1
     return false
   }
 
@@ -352,6 +371,7 @@ Connection.prototype._setState = function (state) {
   this._client.emit(C.EVENT.CONNECTION_STATE_CHANGED, state)
 
   if (state === C.CONNECTION_STATE.OPEN) {
+    this._connectedAt = Date.now()
     this.emit(C.EVENT.CONNECTED, true)
     this._client.emit(C.EVENT.CONNECTED, true)
   } else if (state === C.CONNECTION_STATE.RECONNECTING || state === C.CONNECTION_STATE.CLOSED) {
@@ -367,6 +387,9 @@ Connection.prototype._tryReconnect = function () {
   }
 
   if (this._reconnectionAttempt < this._options.maxReconnectAttempts) {
+    if (this._reconnectionAttempt === 0) {
+      this._stats.reconnects += 1
+    }
     this._setState(C.CONNECTION_STATE.RECONNECTING)
     this._reconnectTimeout = setTimeout(
       () => {

@@ -10,7 +10,12 @@ function RpcHandler(options, connection, client) {
   this._client = client
   this._rpcs = new Map()
   this._providers = new Map()
-  this._stats = {}
+  this._stats = {
+    made: 0,
+    completed: 0,
+    failed: 0,
+    droppedNotConnected: 0,
+  }
 
   this.provide = this.provide.bind(this)
   this.unprovide = this.unprovide.bind(this)
@@ -27,10 +32,19 @@ Object.defineProperty(RpcHandler.prototype, 'connected', {
 
 Object.defineProperty(RpcHandler.prototype, 'stats', {
   get: function stats() {
+    let oldestPendingMs = 0
+    if (this._rpcs.size > 0) {
+      const now = Date.now()
+      for (const rpc of this._rpcs.values()) {
+        oldestPendingMs = Math.max(oldestPendingMs, now - rpc.timestamp)
+      }
+    }
+
     return {
       ...this._stats,
       listeners: this._providers.size,
       rpcs: this._rpcs.size,
+      oldestPendingMs,
     }
   },
 })
@@ -100,9 +114,30 @@ RpcHandler.prototype.make = function (name, data, callback) {
     id,
     name,
     data,
+    timestamp: Date.now(),
     callback,
   })
-  this._connection.sendMsg(C.TOPIC.RPC, C.ACTIONS.REQUEST, [name, id, messageBuilder.typed(data)])
+  this._stats.made += 1
+
+  if (
+    !this._connection.sendMsg(C.TOPIC.RPC, C.ACTIONS.REQUEST, [
+      name,
+      id,
+      messageBuilder.typed(data),
+    ])
+  ) {
+    // The request never reached the server and is never retried, so fail it
+    // now instead of leaving it pending forever.
+    this._rpcs.delete(id)
+    this._stats.droppedNotConnected += 1
+    const err = Object.assign(new Error('not connected'), {
+      code: 'ENOTCONN',
+      rpcId: id,
+      rpcName: name,
+      rpcData: data,
+    })
+    queueMicrotask(() => callback(err))
+  }
 
   return promise
 }
@@ -153,6 +188,7 @@ RpcHandler.prototype._$handle = function (message) {
     this._rpcs.delete(id)
 
     if (error) {
+      this._stats.failed += 1
       rpc.callback(
         Object.assign(new Error(data), {
           rpcId: rpc.id,
@@ -161,6 +197,7 @@ RpcHandler.prototype._$handle = function (message) {
         }),
       )
     } else {
+      this._stats.completed += 1
       rpc.callback(null, messageParser.convertTyped(data, this._client))
     }
   }
@@ -175,6 +212,7 @@ RpcHandler.prototype._onConnectionStateChange = function (connected) {
     const err = Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })
     const rpcs = this._rpcs
     this._rpcs = new Map()
+    this._stats.failed += rpcs.size
     for (const rpc of rpcs.values()) {
       rpc.callback(err)
     }
