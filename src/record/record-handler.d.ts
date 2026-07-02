@@ -312,6 +312,7 @@ export interface RecordStats {
   records: number
   pruning: number
   patching: number
+  putting: number
   subscriptions: number
   listeners: number
 }

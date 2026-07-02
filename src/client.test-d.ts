@@ -318,3 +318,26 @@ ds.on('MAX_RECONNECTION_ATTEMPTS_REACHED', (attempt) => {
 expectError(ds.on('connectionStateChanged', (state: number) => {}))
 expectError(ds.on('connected', (connected: string) => {}))
 expectError(ds.on('MAX_RECONNECTION_ATTEMPTS_REACHED', (attempt: string) => {}))
+
+// client.stats: connection section + record/rpc counters
+expectAssignable<
+  | 'CLOSED'
+  | 'AWAITING_CONNECTION'
+  | 'CHALLENGING'
+  | 'AWAITING_AUTHENTICATION'
+  | 'AUTHENTICATING'
+  | 'OPEN'
+  | 'ERROR'
+  | 'RECONNECTING'
+>(ds.stats.connection.state)
+expectType<number>(ds.stats.connection.connectedSinceMs)
+expectType<number>(ds.stats.connection.reconnects)
+expectType<number>(ds.stats.connection.droppedSends)
+expectType<number>(ds.stats.record.pruning)
+expectType<number>(ds.stats.record.destroyed)
+expectType<number>(ds.stats.record.putting)
+expectType<number>(ds.stats.rpc.oldestPendingMs)
+expectType<number>(ds.stats.rpc.made)
+expectType<number>(ds.stats.rpc.completed)
+expectType<number>(ds.stats.rpc.failed)
+expectType<number>(ds.stats.rpc.droppedNotConnected)

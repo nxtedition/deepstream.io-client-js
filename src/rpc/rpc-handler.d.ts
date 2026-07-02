@@ -44,4 +44,9 @@ type UnprovideFn = () => void
 export interface RpcStats {
   listeners: number
   rpcs: number
+  oldestPendingMs: number
+  made: number
+  completed: number
+  failed: number
+  droppedNotConnected: number
 }
