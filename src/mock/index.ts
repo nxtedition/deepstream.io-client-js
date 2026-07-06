@@ -2,8 +2,25 @@
  * In-memory mock of the deepstream client.
  *
  * Known differences from the real client:
- *  - getConnectionState() always returns 'OPEN'. No network, auth, or reconnection logic.
- *  - event.provide() throws — not implemented
+ *  - No network: getConnectionState() always returns 'OPEN'; login()/close() are no-ops and
+ *    connection-loss behaviors (records dropping to CLIENT, RPC ECONNRESET, resubscribes)
+ *    do not exist.
+ *  - event.provide() throws — not implemented. As a consequence event stats.listeners is
+ *    always 0 (the real client counts provide() listeners there, not subscriptions).
+ *  - Records are never pruned: stats.records never shrinks and refs are bookkeeping only.
+ *  - set()/update() apply synchronously ("instant server ack"): there are no patching or
+ *    updating phases, so stats.updating/patching are always 0 and written records jump
+ *    straight to SERVER state.
+ *  - record.provide() invokes provider callbacks eagerly (at getRecord()/provide() time)
+ *    instead of through the server listen round-trip; when several patterns match, the last
+ *    registered provider wins.
+ *  - Client-set versions are `${n}-mock`; provider versions are `INF-<hash>` like the real
+ *    listeners send.
+ *  - Errors that the real client routes through client.on('error') (PROVIDER_EXISTS,
+ *    NOT_PROVIDING, 'cannot set', 'cannot update', ...) throw synchronously here — the same
+ *    thing the real client does when no 'error' listener is registered (client.js:100-109).
+ *  - event.once() mirrors the real runtime: the callback receives (name, data). Note the
+ *    real implementation contradicts event-handler.d.ts here, which declares (data) only.
  */
 import type {
   DeepstreamClient,
@@ -38,8 +55,16 @@ const SERVER = 2
 const STALE = 3
 const PROVIDER = 4
 
+const RECORD_STATE_NAME: Record<number, string> = {
+  0: 'VOID',
+  1: 'CLIENT',
+  2: 'SERVER',
+  3: 'STALE',
+  4: 'PROVIDER',
+}
+
 // ---------------------------------------------------------------------------
-// Disposer
+// Utilities
 // ---------------------------------------------------------------------------
 
 type Disposer = {
@@ -51,6 +76,64 @@ function makeDisposer(fn: () => void): Disposer {
   const d = fn as Disposer
   d[Symbol.dispose] = fn
   return d
+}
+
+// Matches utils.AbortError in the real client (utils/utils.js:116-122).
+class AbortError extends Error {
+  code = 'ABORT_ERR'
+  constructor() {
+    super('The operation was aborted')
+    this.name = 'AbortError'
+  }
+}
+
+// Same effective check as utils.isPlainObject (utils/utils.js:38-57).
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value == null || Array.isArray(value)) {
+    return false
+  }
+  const proto: unknown = Object.getPrototypeOf(value)
+  return proto === null || proto === Object.prototype
+}
+
+// The real listeners hash the stringified payload with xxhash64 to build
+// `INF-<hash>` provider versions (legacy-listener.js:170-181). A djb2 hash is
+// enough for the mock — it only needs to be deterministic per payload.
+function hashString(s: string): string {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
+  }
+  return h.toString(16)
+}
+
+function isValidPath(path: unknown): boolean {
+  return (
+    (typeof path === 'string' && path.length > 0 && !path.startsWith('_')) ||
+    (Array.isArray(path) && path.length > 0 && !String(path[0]).startsWith('_'))
+  )
+}
+
+function timeoutError(message: string, props: Record<string, unknown>): Error {
+  return Object.assign(new Error(message), { code: 'ETIMEDOUT' }, props)
+}
+
+type ObservableLike = { subscribe: (...args: unknown[]) => unknown }
+
+// The real listeners duck-type provider values (`typeof value$.subscribe ===
+// 'function'`, legacy-listener.js:114, 189) — never instanceof, which would
+// break for observables from a foreign rxjs copy.
+function isObservableLike(value: unknown): value is ObservableLike {
+  return value != null && typeof (value as { subscribe?: unknown }).subscribe === 'function'
+}
+
+function toNativeObservable(value: ObservableLike): Observable<unknown> {
+  return value instanceof Observable
+    ? value
+    : new Observable((subscriber) => {
+        const sub = value.subscribe(subscriber) as { unsubscribe?: () => void } | null
+        return () => sub?.unsubscribe?.()
+      })
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +171,9 @@ export class MockRpcResponse<T = unknown> implements RpcResponse<T> {
       throw new Error('RPC already completed')
     }
     this.completed = true
-    this._reject(new Error('RPC rejected'))
+    // Real: reject() sends a REJECTION (rpc-response.js:11-18); with no other
+    // provider the server answers the caller with a NO_RPC_PROVIDER error.
+    this._reject(new Error('NO_RPC_PROVIDER'))
   }
 }
 
@@ -100,6 +185,14 @@ export class MockRpcHandler<
     (data: unknown, response: MockRpcResponse<unknown>) => unknown
   >()
   private _pendingRpcs = 0
+  private _rpcCounter = 0
+
+  constructor() {
+    // Real: bound so destructured usage works (rpc-handler.js:15-17).
+    this.provide = this.provide.bind(this) as typeof this.provide
+    this.unprovide = this.unprovide.bind(this) as typeof this.unprovide
+    this.make = this.make.bind(this) as typeof this.make
+  }
 
   get connected(): boolean {
     return true
@@ -121,17 +214,33 @@ export class MockRpcHandler<
     name: string,
     callback: (data: unknown, response: MockRpcResponse<unknown>) => unknown,
   ): Disposer {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument name')
+    }
+    if (typeof callback !== 'function') {
+      throw new Error('invalid argument callback')
+    }
+    if (this._providers.has(name)) {
+      // Real: PROVIDER_EXISTS is routed through client error handling, which
+      // throws when no 'error' listener is registered (rpc-handler.js:46-49 +
+      // client.js:100-109). The first provider stays active.
+      throw Object.assign(new Error(name), { event: 'PROVIDER_EXISTS' })
+    }
     this._providers.set(name, callback)
-    return makeDisposer(() => {
-      if (this._providers.get(name) === callback) {
-        this._providers.delete(name)
-      }
-    })
+    return makeDisposer(() => this.unprovide(name))
   }
 
   unprovide<Name extends string & keyof Methods>(name: Name): void
   unprovide(name: string): void
   unprovide(name: string): void {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument name')
+    }
+    if (!this._providers.has(name)) {
+      // Real: NOT_PROVIDING error (rpc-handler.js:70-73), thrown without an
+      // 'error' listener.
+      throw Object.assign(new Error(name), { event: 'NOT_PROVIDING' })
+    }
     this._providers.delete(name)
   }
 
@@ -151,12 +260,28 @@ export class MockRpcHandler<
     data?: unknown,
     callback?: (error: unknown, result: unknown) => void,
   ): Promise<unknown> | void {
-    const provider = this._providers.get(name)
-    if (!provider) {
-      const err = Object.assign(new Error('NO_RPC_PROVIDER'), {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument name')
+    }
+    if (callback !== undefined && typeof callback !== 'function') {
+      throw new Error('invalid argument callback')
+    }
+
+    const rpcId = `rpc-${++this._rpcCounter}`
+
+    // Real: the caller always receives `Object.assign(new Error(message),
+    // { rpcId, rpcName, rpcData })` — only the error message crosses the wire
+    // (rpc-handler.js:148-162, rpc-response.js:20-32).
+    const wrapError = (err: unknown) =>
+      Object.assign(new Error(err instanceof Error ? err.message : String(err)), {
+        rpcId,
         rpcName: name,
         rpcData: data,
       })
+
+    const provider = this._providers.get(name)
+    if (!provider) {
+      const err = wrapError(new Error('NO_RPC_PROVIDER'))
       if (callback) {
         callback(err, undefined)
         return
@@ -177,10 +302,11 @@ export class MockRpcHandler<
 
     const done = (err: unknown, val?: unknown) => {
       this._pendingRpcs--
+      const wrapped = err == null ? null : wrapError(err)
       if (callback) {
-        callback(err, val)
-      } else if (err) {
-        reject_!(err)
+        callback(wrapped, val)
+      } else if (wrapped) {
+        reject_!(wrapped)
       } else {
         resolve_!(val)
       }
@@ -221,6 +347,8 @@ export class MockRpcHandler<
 
   cleanup(): void {
     this._providers.clear()
+    this._pendingRpcs = 0
+    this._rpcCounter = 0
   }
 }
 
@@ -230,35 +358,54 @@ export class MockRpcHandler<
 
 export class MockEventHandler implements EventHandler {
   private _subscriptions = new Map<string, Set<(data: unknown) => void>>()
-  // Keyed by event name so the same callback can be registered as a once()
-  // listener on multiple events without the wrappers colliding.
-  private _onceWrappers = new Map<string, Map<(data: unknown) => void, (data: unknown) => void>>()
   private _emittedCount = 0
+
+  constructor() {
+    // Real: bound so destructured usage works (event-handler.js:19-23).
+    this.subscribe = this.subscribe.bind(this)
+    this.unsubscribe = this.unsubscribe.bind(this)
+    this.observe = this.observe.bind(this)
+    this.provide = this.provide.bind(this)
+    this.emit = this.emit.bind(this)
+  }
 
   get connected(): boolean {
     return true
   }
 
   get stats(): EventStats {
-    let listeners = 0
-    for (const set of this._subscriptions.values()) {
-      listeners += set.size
-    }
+    // Real: `listeners` counts provide() listeners and `events` counts distinct
+    // subscribed names (event-handler.js:34-42). The mock has no event.provide()
+    // so listeners is always 0.
     return {
       emitted: this._emittedCount,
-      listeners,
+      listeners: 0,
       events: this._subscriptions.size,
     }
   }
 
   emit(name: string, data?: unknown): void {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument name')
+    }
     this._emittedCount++
-    for (const cb of this._subscriptions.get(name) ?? []) {
-      cb(data)
+    const subs = this._subscriptions.get(name)
+    if (subs) {
+      // Iterate a snapshot like component-emitter2 does, so callbacks may
+      // (un)subscribe during emit without affecting this delivery.
+      for (const cb of Array.from(subs)) {
+        cb(data)
+      }
     }
   }
 
   subscribe(name: string, callback: (data: unknown) => void): void {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument name')
+    }
+    if (typeof callback !== 'function') {
+      throw new Error('invalid argument callback')
+    }
     let subs = this._subscriptions.get(name)
     if (!subs) {
       this._subscriptions.set(name, (subs = new Set()))
@@ -267,6 +414,12 @@ export class MockEventHandler implements EventHandler {
   }
 
   unsubscribe(name: string, callback?: (data: unknown) => void): void {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument name')
+    }
+    if (callback !== undefined && typeof callback !== 'function') {
+      throw new Error('invalid argument callback')
+    }
     if (!callback) {
       this._subscriptions.delete(name)
       return
@@ -286,31 +439,21 @@ export class MockEventHandler implements EventHandler {
   }
 
   once(name: string, callback: (data: unknown) => void): this {
-    const wrapper = (data: unknown) => {
-      this.off(name, callback)
-      callback(data)
+    // Mirrors the real client (event-handler.js:79-86): the wrapper passes the
+    // event NAME as the first argument — `callback(name, ...args)` — and since
+    // the wrapper is anonymous, off(name, callback) cannot remove a pending
+    // once() subscription. (The real implementation contradicts its own d.ts
+    // here; the mock follows the runtime behavior.)
+    const fn = (data: unknown) => {
+      this.unsubscribe(name, fn)
+      ;(callback as (name: string, data: unknown) => void)(name, data)
     }
-    let wrappers = this._onceWrappers.get(name)
-    if (!wrappers) {
-      this._onceWrappers.set(name, (wrappers = new Map()))
-    }
-    wrappers.set(callback, wrapper)
-    this.subscribe(name, wrapper)
+    this.subscribe(name, fn)
     return this
   }
 
   off(name: string, callback: (data: unknown) => void): this {
-    const wrappers = this._onceWrappers.get(name)
-    const wrapper = wrappers?.get(callback)
-    if (wrapper) {
-      wrappers!.delete(callback)
-      if (wrappers!.size === 0) {
-        this._onceWrappers.delete(name)
-      }
-      this.unsubscribe(name, wrapper)
-    } else {
-      this.unsubscribe(name, callback)
-    }
+    this.unsubscribe(name, callback)
     return this
   }
 
@@ -328,7 +471,6 @@ export class MockEventHandler implements EventHandler {
 
   cleanup(): void {
     this._subscriptions.clear()
-    this._onceWrappers.clear()
     this._emittedCount = 0
   }
 }
@@ -347,6 +489,7 @@ export class MockDeepstreamClientController<
 
   public setRecordState(name: string, state: number, data?: unknown): void {
     const record = this.client.record.getRecord(name) as unknown as MockRecord<unknown>
+    record.unref() // getRecord refs like the real client; keep the controller neutral
     record.setState(state, data)
   }
 
@@ -356,6 +499,7 @@ export class MockDeepstreamClientController<
 
   public getRecordSubscriptions(name: string) {
     const record = this.client.record.getRecord(name) as unknown as MockRecord<unknown>
+    record.unref()
     return record.subscriptions
   }
 }
@@ -536,6 +680,20 @@ export class MockRecordHandler<
 
   private _records: Map<string, MockRecord<unknown>> = new Map()
   private _providers: Array<[pattern: string, callback: (key: string) => unknown]> = []
+  private _created = 0
+
+  constructor() {
+    // Real: the handler binds these methods so destructured usage works
+    // (record-handler.js:125-132).
+    this.set = this.set.bind(this) as typeof this.set
+    this.get = this.get.bind(this) as typeof this.get
+    this.update = this.update.bind(this) as typeof this.update
+    this.observe = this.observe.bind(this) as typeof this.observe
+    this.observe2 = this.observe2.bind(this) as typeof this.observe2
+    this.sync = this.sync.bind(this) as typeof this.sync
+    this.provide = this.provide.bind(this) as typeof this.provide
+    this.getRecord = this.getRecord.bind(this) as typeof this.getRecord
+  }
 
   get connected() {
     return true
@@ -544,14 +702,17 @@ export class MockRecordHandler<
   get stats(): RecordStats {
     let subscriptions = 0
     for (const record of this._records.values()) {
-      subscriptions += record.subscriptions.size + record._observeCount
+      for (const inner of record.subscriptions.values()) {
+        subscriptions += inner.size
+      }
+      subscriptions += record._observeCount
     }
     return {
       subscriptions,
       records: this._records.size,
       listeners: this._providers.length,
+      created: this._created,
       updating: 0,
-      created: 0,
       destroyed: 0,
       pruning: 0,
       patching: 0,
@@ -561,17 +722,15 @@ export class MockRecordHandler<
   // The real provider infrastructure flattens providers that emit
   // observables (a common provider shape is an outer record observe mapping
   // each emission to an inner pipeline); mirror it recursively so provided
-  // record data is never an Observable instance. Detection uses
-  // rxjs.isObservable rather than instanceof: consumers may hold observables
-  // from another rxjs copy or build, whose Observable class differs.
+  // record data is never an Observable instance.
   private _flatten(value: unknown): Observable<unknown> {
-    return rxjs.isObservable(value)
-      ? value.pipe(rxjs.switchMap((inner) => this._flatten(inner)))
+    return isObservableLike(value)
+      ? toNativeObservable(value).pipe(rxjs.switchMap((inner) => this._flatten(inner)))
       : rxjs.of(value)
   }
 
   private _toObservable(value: unknown): Observable<unknown> | null {
-    if (rxjs.isObservable(value)) {
+    if (isObservableLike(value)) {
       return this._flatten(value)
     }
     if (value != null) {
@@ -596,49 +755,191 @@ export class MockRecordHandler<
   private _createRecord(name: string): MockRecord<unknown> {
     const record = new MockRecord<unknown>(name)
     this._records.set(name, record)
+    this._created++
     const provider = this._findProvider(name)
     if (provider) {
       record.setProvider(provider)
     } else {
-      record.setState(SERVER, EMPTY as unknown) // simulate server's empty-record response
+      // Simulate the server's empty-record response: SERVER state with a
+      // numeric version (real versions match /^\d+-/, record-handler.js:420).
+      record.version = '0-mock'
+      record.setState(SERVER, EMPTY as unknown)
     }
     return record
   }
 
+  // Mirrors the sequential argument parser of the real _observe
+  // (record-handler.js:549-619): [path], [state], [options], where path may be
+  // a string, an array or a function selector, and options may override both.
   private _parseObserveArgs(
-    pathOrStateOrOptions?: string | number | ObserveOptions,
-    maybeStateOrOptions?: number | ObserveOptions,
-  ): { path: string | undefined; state: number } {
-    if (typeof pathOrStateOrOptions === 'string') {
-      const state =
-        typeof maybeStateOrOptions === 'number'
-          ? maybeStateOrOptions
-          : (maybeStateOrOptions?.state ?? SERVER)
-      return { path: pathOrStateOrOptions, state }
+    defaults: { state: number; dataOnly: boolean },
+    args: unknown[],
+  ): {
+    path: string | string[] | ((data: unknown) => unknown) | undefined
+    state: number
+    timeout: number
+    dataOnly: boolean
+    signal: AbortSignal | null
+  } {
+    let path: string | string[] | ((data: unknown) => unknown) | undefined
+    let state: unknown = defaults.state
+    let dataOnly = defaults.dataOnly
+    let timeout = 2 * 60e3
+    let signal: AbortSignal | null = null
+
+    let idx = 0
+
+    if (
+      idx < args.length &&
+      (args[idx] == null ||
+        typeof args[idx] === 'string' ||
+        Array.isArray(args[idx]) ||
+        typeof args[idx] === 'function')
+    ) {
+      path = args[idx++] as typeof path
     }
-    if (typeof pathOrStateOrOptions === 'number') {
-      return { path: undefined, state: pathOrStateOrOptions }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
+      state = args[idx++]
     }
-    if (pathOrStateOrOptions != null && typeof pathOrStateOrOptions === 'object') {
-      const path = (pathOrStateOrOptions as ObserveOptionsWithPath<string>).path
-      return { path, state: pathOrStateOrOptions.state ?? SERVER }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
+      const options = (args[idx++] || {}) as ObserveOptionsWithPath<string>
+      if (options.signal !== undefined) {
+        signal = options.signal
+      }
+      if (options.timeout !== undefined) {
+        timeout = options.timeout
+      }
+      if (options.path !== undefined) {
+        path = options.path
+      }
+      if (options.state !== undefined) {
+        state = options.state
+      }
+      if (options.dataOnly !== undefined) {
+        dataOnly = options.dataOnly
+      }
     }
-    return { path: undefined, state: SERVER }
+
+    if (typeof state === 'string') {
+      state = this.STATE[state.toUpperCase()]
+    }
+    if (!Number.isInteger(state) || (state as number) < 0) {
+      throw new Error(`invalid argument "state": ${String(state)}`)
+    }
+    if (!Number.isInteger(timeout) || timeout < 0) {
+      throw new Error(`invalid argument "timeout": ${timeout}`)
+    }
+
+    return { path, state: state as number, timeout, dataOnly, signal }
+  }
+
+  private _observeImpl(
+    defaults: { state: number; dataOnly: boolean },
+    name: string,
+    args: unknown[],
+  ): Observable<unknown> {
+    const { path, state, timeout, dataOnly, signal } = this._parseObserveArgs(defaults, args)
+    const select = (data: unknown) =>
+      typeof path === 'function' ? path(data) : path ? jsonPath.get(data, path) : data
+
+    return new Observable((observer) => {
+      if (signal?.aborted) {
+        // Real: aborted signals error the subscriber immediately
+        // (record-handler.js:622-624).
+        observer.error(new AbortError())
+        return
+      }
+
+      // Real: the record is acquired inside the Observable subscribe function
+      // (record-handler.js:681) — a cold observable must not create records.
+      const r = this.getRecord(name) as unknown as MockRecord<unknown>
+      r._observeCount++
+
+      let source: Observable<unknown> = r.subject.pipe(
+        rxjs.filter((s) => s.state >= state),
+        rxjs.map(({ state: s, data }) =>
+          dataOnly
+            ? select(data)
+            : { name: r.name, version: r.version, state: s, data: select(data) },
+        ),
+      )
+
+      if (dataOnly) {
+        // Real: dataOnly subscriptions only notify when the selected data
+        // actually changed (record-handler.js:58-62).
+        source = source.pipe(rxjs.distinctUntilChanged())
+      }
+
+      if (timeout > 0) {
+        // Real: subscriptions error with ETIMEDOUT when the requested state is
+        // not reached in time (record-handler.js:73-98, 690-692). The timer
+        // only guards the first qualifying emission, like the real client.
+        source = source.pipe(
+          rxjs.timeout({
+            first: timeout,
+            with: () =>
+              rxjs.throwError(() =>
+                timeoutError(
+                  `timeout state: ${name} [${RECORD_STATE_NAME[r.state]}<${RECORD_STATE_NAME[state]}]`,
+                  {
+                    timeout,
+                    expected: RECORD_STATE_NAME[state],
+                    current: RECORD_STATE_NAME[r.state],
+                    name,
+                  },
+                ),
+              ),
+          }),
+        )
+      }
+
+      if (signal) {
+        source = rxjs.merge(
+          source,
+          rxjs
+            .fromEvent(signal, 'abort')
+            .pipe(rxjs.mergeMap(() => rxjs.throwError(() => new AbortError()))),
+        )
+      }
+
+      const sub = source.subscribe(observer)
+      return () => {
+        r._observeCount--
+        r.unref()
+        sub.unsubscribe()
+      }
+    })
   }
 
   // --------------- getRecord ---------------
 
   getRecord<Name extends string, Data = Lookup<Records, Name>>(name: Name): DsRecord<Data> {
+    if (typeof name !== 'string' || name.length === 0) {
+      throw new Error('invalid argument: name')
+    }
     const r = this._records.get(name) ?? this._createRecord(name)
-    return r as DsRecord<Data>
+    // Real: getRecord returns record.ref() (record-handler.js:235).
+    return r.ref() as DsRecord<Data>
   }
 
   // --------------- put ---------------
 
   put(name: string, version: string, data: Record<string, unknown> | null): void {
+    // Same validation as the real put (record-handler.js:415-430).
+    if (typeof name !== 'string' || name.startsWith('_')) {
+      throw new Error('invalid argument: name')
+    }
+    if (typeof version !== 'string' || !/^\d+-/.test(version)) {
+      throw new Error('invalid argument: version')
+    }
+    if (typeof data !== 'object' && data != null) {
+      throw new Error('invalid argument: data')
+    }
     const record = this._records.get(name) ?? this._createRecord(name)
-    ;(record as unknown as MockRecord<unknown>).version = version
-    ;(record as unknown as MockRecord<unknown>).setState(SERVER, data ?? EMPTY)
+    record.version = version
+    record.setState(SERVER, (data ?? EMPTY) as unknown)
   }
 
   // --------------- getAsync ---------------
@@ -664,23 +965,48 @@ export class MockRecordHandler<
     | { value: Promise<Lookup<Records, Name>>; async: true }
   getAsync(
     name: string,
-    pathOrState?: string | string[] | number | ObserveOptions,
-    options?: ObserveOptions,
+    ...args: unknown[]
   ): { value: unknown; async: false } | { value: Promise<unknown>; async: true } {
-    const record = this.getRecord(name) as unknown as MockRecord<unknown>
-    const state =
-      typeof pathOrState === 'number'
-        ? pathOrState
-        : (options?.state ?? (pathOrState as ObserveOptions)?.state ?? SERVER)
-    const path =
-      typeof pathOrState === 'string' || Array.isArray(pathOrState) ? pathOrState : undefined
-    const getValue = () => (path ? jsonPath.get(record.data, path) : record.data)
-    if (record.state >= state) {
-      return { value: getValue(), async: false }
+    // Mirrors the real getAsync (record-handler.js:486-526): default state is
+    // CLIENT, and passing an options object always takes the async path.
+    const get = this.get as (n: string, ...a: unknown[]) => Promise<unknown>
+
+    let path: unknown
+    let state: unknown = CLIENT
+    let idx = 0
+
+    if (
+      idx < args.length &&
+      (args[idx] == null ||
+        typeof args[idx] === 'string' ||
+        Array.isArray(args[idx]) ||
+        typeof args[idx] === 'function')
+    ) {
+      path = args[idx++]
     }
-    return {
-      async: true,
-      value: record.when(state).then(getValue),
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'number')) {
+      state = args[idx++]
+    }
+
+    if (idx < args.length && (args[idx] == null || typeof args[idx] === 'object')) {
+      return { value: get(name, ...args), async: true }
+    }
+
+    if (typeof state === 'string') {
+      state = this.STATE[state.toUpperCase()]
+    }
+    if (!Number.isInteger(state) || (state as number) < 0) {
+      throw new Error('invalid argument: state')
+    }
+
+    const rec = this.getRecord(name) as unknown as MockRecord<unknown>
+    try {
+      return rec.state >= (state as number)
+        ? { value: (rec.get as (p?: unknown) => unknown)(path), async: false }
+        : { value: get(name, ...args), async: true }
+    } finally {
+      rec.unref()
     }
   }
 
@@ -712,18 +1038,9 @@ export class MockRecordHandler<
     state?: number,
     options?: ObserveOptionsWithPath<Path>,
   ): Promise<Get<Lookup<Records, Name>, Path>>
-  get(
-    name: string,
-    pathOrStateOrOptions?: string | number | ObserveOptions,
-    maybeStateOrOptions?: number | ObserveOptions,
-  ): Promise<unknown> {
-    return firstValueFrom(
-      (this.observe as (n: string, a?: unknown, b?: unknown) => Observable<unknown>)(
-        name,
-        pathOrStateOrOptions,
-        maybeStateOrOptions,
-      ),
-    )
+  get(name: string, ...args: unknown[]): Promise<unknown> {
+    // Real GET_DEFAULTS: dataOnly, default state CLIENT (record-handler.js:25-29).
+    return firstValueFrom(this._observeImpl({ state: CLIENT, dataOnly: true }, name, args))
   }
 
   // --------------- get2 ---------------
@@ -779,23 +1096,17 @@ export class MockRecordHandler<
   }>
   get2(
     name: string,
-    pathOrState?: string | number | ObserveOptions,
-    maybeState?: number | ObserveOptions,
+    ...args: unknown[]
   ): Promise<{ name: string; version: string; state: number; data: unknown }> {
+    // Real GET2_DEFAULTS: metadata, default state CLIENT (record-handler.js:30-33).
     return firstValueFrom(
-      (
-        this.observe2 as (
-          n: string,
-          a?: unknown,
-          b?: unknown,
-        ) => Observable<{
-          name: string
-          version: string
-          state: number
-          data: unknown
-        }>
-      )(name, pathOrState, maybeState),
-    )
+      this._observeImpl({ state: CLIENT, dataOnly: false }, name, args),
+    ) as Promise<{
+      name: string
+      version: string
+      state: number
+      data: unknown
+    }>
   }
 
   // --------------- set ---------------
@@ -807,7 +1118,13 @@ export class MockRecordHandler<
     data: Get<Lookup<Records, Name>, Path>,
   ): void
   set(name: string, ...args: unknown[]): void {
-    ;(this.getRecord(name).set as (...a: unknown[]) => void)(...args)
+    // Real: acquire, set, unref (record-handler.js:406-413).
+    const record = this.getRecord(name)
+    try {
+      ;(record.set as (...a: unknown[]) => void)(...args)
+    } finally {
+      record.unref()
+    }
   }
 
   // --------------- update ---------------
@@ -827,7 +1144,17 @@ export class MockRecordHandler<
     options?: UpdateOptions,
   ): Promise<void>
   update(name: string, ...args: unknown[]): Promise<void> {
-    return (this.getRecord(name).update as (...a: unknown[]) => Promise<void>)(...args)
+    // Real: sync throws become rejections (record-handler.js:450-461).
+    try {
+      const record = this.getRecord(name)
+      try {
+        return (record.update as (...a: unknown[]) => Promise<void>)(...args)
+      } finally {
+        record.unref()
+      }
+    } catch (err) {
+      return Promise.reject(err)
+    }
   }
 
   // --------------- observe ---------------
@@ -861,18 +1188,9 @@ export class MockRecordHandler<
     state?: number,
     options?: ObserveOptionsWithPath<Path>,
   ): Observable<Get<Lookup<Records, Name>, Path>>
-  observe(
-    name: string,
-    pathOrStateOrOptions?: string | number | ObserveOptions,
-    maybeStateOrOptions?: number | ObserveOptions,
-  ): Observable<unknown> {
-    return (
-      this.observe2 as (
-        n: string,
-        a?: unknown,
-        b?: unknown,
-      ) => Observable<{ name: string; version: string; state: number; data: unknown }>
-    )(name, pathOrStateOrOptions, maybeStateOrOptions).pipe(rxjs.map(({ data }) => data))
+  observe(name: string, ...args: unknown[]): Observable<unknown> {
+    // Real OBSERVE_DEFAULTS: dataOnly, default state SERVER (record-handler.js:17-21).
+    return this._observeImpl({ state: SERVER, dataOnly: true }, name, args)
   }
 
   // --------------- observe2 ---------------
@@ -928,28 +1246,15 @@ export class MockRecordHandler<
   }>
   observe2(
     name: string,
-    pathOrStateOrOptions?: string | number | ObserveOptions,
-    maybeStateOrOptions?: number | ObserveOptions,
+    ...args: unknown[]
   ): Observable<{ name: string; version: string; state: number; data: unknown }> {
-    const { path, state } = this._parseObserveArgs(pathOrStateOrOptions, maybeStateOrOptions)
-    const r = this.getRecord(name) as unknown as MockRecord<unknown>
-    const source = r.subject.pipe(
-      rxjs.filter((s) => s.state >= state),
-      rxjs.map(({ state: s, data }) => ({
-        name: r.name,
-        version: r.version,
-        state: s,
-        data: path ? jsonPath.get(data, path) : data,
-      })),
-    )
-    return new Observable((observer) => {
-      r._observeCount++
-      const sub = source.subscribe(observer)
-      return () => {
-        r._observeCount--
-        sub.unsubscribe()
-      }
-    })
+    // Real OBSERVE2_DEFAULTS: metadata, default state CLIENT (record-handler.js:22-24).
+    return this._observeImpl({ state: CLIENT, dataOnly: false }, name, args) as Observable<{
+      name: string
+      version: string
+      state: number
+      data: unknown
+    }>
   }
 
   // --------------- provide ---------------
@@ -959,6 +1264,17 @@ export class MockRecordHandler<
     cb: (key: string) => unknown,
     _optionsOrRecursive?: ProvideOptions | boolean,
   ): Disposer {
+    // Same validation as the real provide (record-handler.js:238-254).
+    if (typeof pattern !== 'string' || pattern.length === 0) {
+      throw new Error('invalid argument pattern')
+    }
+    if (typeof cb !== 'function') {
+      throw new Error('invalid argument callback')
+    }
+    if (this._providers.some(([p]) => p === pattern)) {
+      throw new Error(`pattern already provided: ${pattern}`)
+    }
+
     this._providers.push([pattern, cb])
 
     for (const record of this._records.values()) {
@@ -991,6 +1307,7 @@ export class MockRecordHandler<
     }
     this._providers.splice(0, this._providers.length)
     this._records.clear()
+    this._created = 0
   }
 }
 
@@ -1001,7 +1318,9 @@ export class MockRecordHandler<
 export class MockRecord<Data = unknown> implements DsRecord<Data> {
   public name: string
   public refs = 0
-  public version = '0'
+  // Real records start with an empty version (record.js:18); records that
+  // simulate a server response get '0-mock', providers set 'INF-<hash>'.
+  public version = ''
 
   public readonly subject = new BehaviorSubject<{
     state: number
@@ -1009,10 +1328,14 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
   }>({ state: VOID, data: EMPTY as unknown as Data })
 
   public provider: Observable<unknown> | null = null
-  public subscriptions = new Map<(record: DsRecord<Data>, opaque: unknown) => void, Subscription>()
+  // callback → opaque → live subscription; unsubscribe matches the
+  // (callback, opaque) pair like the real client (record.js:116-141).
+  public subscriptions = new Map<
+    (record: DsRecord<Data>, opaque: unknown) => void,
+    Map<unknown, Subscription>
+  >()
   public _observeCount = 0
   private _providerSubscription: Subscription | null = null
-  private _fromProvider = false
 
   constructor(name: string) {
     this.name = name
@@ -1022,16 +1345,55 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
     this._providerSubscription?.unsubscribe()
     this._providerSubscription = null
     this.provider = provider
-    if (provider) {
-      this._providerSubscription = provider.subscribe((data) => {
-        this._fromProvider = true
-        this.subject.next({ data: data as Data, state: PROVIDER })
+
+    if (!provider) {
+      this._onProviderGone()
+      return
+    }
+
+    let withdrawn = false
+    const subscription = provider.subscribe((value) => {
+      if (withdrawn) {
+        return
+      }
+      if (value == null) {
+        // Real: a provider emitting null withdraws — the listener rejects the
+        // subscription (legacy-listener.js:141-143), the server reports
+        // hasProvider=false and the record goes STALE keeping its data
+        // (record.js:550-567).
+        withdrawn = true
+        this.provider = null
+        this._providerSubscription?.unsubscribe()
+        this._providerSubscription = null
+        this._onProviderGone()
+        return
+      }
+      // Real: providers stringify the payload and version updates as
+      // `INF-<hash>`, skipping identical payloads (legacy-listener.js:149-181).
+      const body = JSON.stringify(value)
+      const version = `INF-${hashString(body)}`
+      if (version === this.version) {
+        return
+      }
+      this.version = version
+      this.subject.next({
+        state: PROVIDER,
+        data: jsonPath.set(this.data, null, JSON.parse(body) as unknown, true) as Data,
       })
+    })
+    if (withdrawn) {
+      subscription.unsubscribe()
     } else {
-      // Provider removed: preserve data, go STALE if data came from a provider, SERVER otherwise.
-      // Matches real client: version with 'I' prefix → STALE, numeric version → SERVER.
-      const newState = this._fromProvider ? STALE : SERVER
-      this.subject.next({ state: newState, data: this.data })
+      this._providerSubscription = subscription
+    }
+  }
+
+  private _onProviderGone(): void {
+    // Provider removed: preserve data; I-versioned (provider) data goes STALE,
+    // numeric versions go back to SERVER (record.js:550-567).
+    const state = this.version.charAt(0) === 'I' ? STALE : SERVER
+    if (this.state !== state) {
+      this.subject.next({ state, data: this.data })
     }
   }
 
@@ -1041,7 +1403,8 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
   }
 
   [Symbol.dispose](): void {
-    this.cleanup()
+    // Real: dispose is a plain unref (record.js:89-91).
+    this.unref()
   }
 
   get data(): Data {
@@ -1054,12 +1417,12 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
 
   ref(): DsRecord<Data> {
     this.refs++
-    return this
+    return this as unknown as DsRecord<Data>
   }
 
   unref(): DsRecord<Data> {
     this.refs--
-    return this
+    return this as unknown as DsRecord<Data>
   }
 
   setState(state: number, data?: Data): void {
@@ -1068,52 +1431,99 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
 
   subscribe(
     callback: (record: DsRecord<Data>, opaque: unknown) => void,
-    opaque?: unknown,
+    opaque: unknown = null,
   ): DsRecord<Data> {
-    const subscription = this.subject.subscribe(() =>
-      callback(this as unknown as DsRecord<Data>, opaque),
+    let inner = this.subscriptions.get(callback)
+    if (!inner) {
+      this.subscriptions.set(callback, (inner = new Map()))
+    }
+    inner.get(opaque)?.unsubscribe()
+    // Real: subscribe only registers; callbacks fire on subsequent updates
+    // (record.js:98-108) — skip the BehaviorSubject's current value.
+    inner.set(
+      opaque,
+      this.subject
+        .pipe(rxjs.skip(1))
+        .subscribe(() => callback(this as unknown as DsRecord<Data>, opaque)),
     )
-    this.subscriptions.set(callback, subscription)
-    return this
+    return this as unknown as DsRecord<Data>
   }
 
   unsubscribe(
     callback: (record: DsRecord<Data>, opaque: unknown) => void,
-    _opaque?: unknown,
+    opaque: unknown = null,
   ): DsRecord<Data> {
-    const sub = this.subscriptions.get(callback)
-    if (sub) {
+    const inner = this.subscriptions.get(callback)
+    const sub = inner?.get(opaque)
+    if (inner && sub) {
       sub.unsubscribe()
-      this.subscriptions.delete(callback)
+      inner.delete(opaque)
+      if (inner.size === 0) {
+        this.subscriptions.delete(callback)
+      }
     }
-    return this
+    return this as unknown as DsRecord<Data>
   }
 
   get<P extends string | string[]>(path: P): Get<Data, P>
+  get<R>(fn: (data: Data) => R): R
   get(): Data
-  get(path?: string): unknown {
-    return path ? jsonPath.get(this.data, path) : this.data
+  get(path?: unknown): unknown {
+    // Same argument handling as the real get (record.js:184-194).
+    if (!path) {
+      return this.data
+    } else if (typeof path === 'string' || Array.isArray(path)) {
+      return jsonPath.get(this.data, path)
+    } else if (typeof path === 'function') {
+      return (path as (data: Data) => unknown)(this.data)
+    } else {
+      throw new Error('invalid argument: path')
+    }
   }
 
   set(data: Data): void
   set<P extends string>(path: P, data: Get<Data, P>): void
-  set(pathOrData: unknown, value?: unknown): void {
-    this._fromProvider = false
-    this.version = `${parseInt(this.version, 10) + 1}`
+  set(pathOrData: unknown, dataOrNil?: unknown): void {
+    // Real: I-versioned (provider) records and '_'-names cannot be set —
+    // USER_ERROR 'cannot set', which throws without an 'error' listener
+    // (record.js:202-205 + client.js:100-109).
+    if (this.version.charAt(0) === 'I' || this.name.startsWith('_')) {
+      throw Object.assign(new Error('cannot set'), { event: 'USER_ERROR' })
+    }
+
     // The real client disambiguates the overloads on argument count, not on
     // the value: set(path, undefined) clears the path, it must not replace
     // the record data with the path string.
-    if (arguments.length >= 2) {
-      this.subject.next({
-        state: SERVER,
-        data: jsonPath.set(this.data, pathOrData, value) as Data,
-      })
-    } else {
-      this.subject.next({
-        state: SERVER,
-        data: pathOrData as Data,
-      })
+    const path = arguments.length === 1 ? undefined : pathOrData
+    const data = arguments.length === 1 ? pathOrData : dataOrNil
+
+    // Same validation as the real set (record.js:210-222).
+    if (path === undefined && !isPlainObject(data)) {
+      throw new Error('invalid argument: data')
     }
+    if (path === undefined && Object.keys(data as object).some((prop) => prop.startsWith('_'))) {
+      throw new Error('invalid argument: data')
+    }
+    if (path !== undefined && !isValidPath(path)) {
+      throw new Error('invalid argument: path')
+    }
+
+    // Real: set → _update(jsonPath.set(...)) which no-ops when structural
+    // sharing returns the same reference (record.js:436-443) — no version
+    // bump, no emission. jsonPath also JSON-clones incoming values, so caller
+    // mutations cannot leak into record data.
+    const nextData = jsonPath.set(
+      this.data,
+      path as string | string[] | undefined,
+      data,
+      false,
+    ) as Data
+    if (nextData === this.data) {
+      return
+    }
+
+    this.version = `${(this.version ? parseInt(this.version, 10) : 0) + 1}-mock`
+    this.subject.next({ state: SERVER, data: nextData })
   }
 
   // Real client passes version as second argument to the updater
@@ -1124,11 +1534,17 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
     options?: UpdateOptions,
   ): Promise<void>
   async update(
-    pathOrUpdater: string | ((...args: never[]) => unknown),
+    pathOrUpdater: string | string[] | ((...args: never[]) => unknown),
     updaterOrOptions?: UpdateOptions | ((...args: never[]) => unknown),
     optionsOrNil?: UpdateOptions,
   ): Promise<void> {
-    const path = typeof pathOrUpdater === 'string' ? pathOrUpdater : undefined
+    // Real: updates of I-versioned (provider) records raise UPDATE_ERROR
+    // 'cannot update' and do not apply (record.js:341-348).
+    if (this.version.charAt(0) === 'I') {
+      throw Object.assign(new Error('cannot update'), { event: 'UPDATE_ERROR' })
+    }
+
+    const path = typeof pathOrUpdater === 'function' ? undefined : pathOrUpdater
     const updater =
       typeof pathOrUpdater === 'function'
         ? pathOrUpdater
@@ -1136,43 +1552,94 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
           ? updaterOrOptions
           : undefined
 
-    if (!updater) {
-      throw new Error('no updater')
+    if (typeof updater !== 'function') {
+      throw new Error('invalid argument: updater')
+    }
+    if (path !== undefined && !isValidPath(path)) {
+      throw new Error('invalid argument: path')
     }
 
     const options: UpdateOptions | undefined =
       optionsOrNil ?? (typeof updaterOrOptions !== 'function' ? updaterOrOptions : undefined)
 
-    await this.when(SERVER, { timeout: options?.timeout ?? 60e3 })
+    if (options?.signal?.aborted) {
+      throw (options.signal.reason as Error) ?? new AbortError()
+    }
+
+    await this.when(SERVER, options)
 
     const prev = path ? jsonPath.get(this.data, path) : (this.data as unknown)
     const next = (updater as (data: unknown, version: string) => unknown)(prev, this.version)
 
-    if (prev === next) {
-      return
+    // Real: only write when something changed, and never write a nullish
+    // whole-record result (record.js:375).
+    if (prev !== next && (path || next != null)) {
+      if (path) {
+        ;(this.set as (p: unknown, d: unknown) => void)(path, next)
+      } else {
+        this.set(next as Data)
+      }
     }
-
-    const targetData = path ? jsonPath.set(this.data, path, next) : next
-    this.set(targetData as Data)
   }
 
   when(): Promise<DsRecord<Data>>
   when(options: WhenOptions): Promise<DsRecord<Data>>
   when(state: number, options?: WhenOptions): Promise<DsRecord<Data>>
-  async when(
-    stateOrOptions?: number | WhenOptions,
-    optionsOrNil?: WhenOptions,
-  ): Promise<DsRecord<Data>> {
-    const options = typeof stateOrOptions === 'number' ? optionsOrNil : (stateOrOptions ?? {})
-    const state = typeof stateOrOptions === 'number' ? stateOrOptions : (options?.state ?? SERVER)
-    const timeout = options?.timeout ?? 60e3
-    await firstValueFrom(
-      this.subject.pipe(
-        rxjs.filter((s) => s.state >= state),
-        rxjs.timeout({ first: timeout }),
-      ),
-    )
-    return this
+  when(stateOrOptions?: number | WhenOptions, optionsOrNil?: WhenOptions): Promise<DsRecord<Data>> {
+    // Same argument handling and defaults as the real when (record.js:243-262):
+    // default state SERVER, default timeout 2 minutes, signal support.
+    let options: WhenOptions | undefined
+    let state: number
+    if (stateOrOptions != null && typeof stateOrOptions === 'object') {
+      options = stateOrOptions
+      state = options.state ?? SERVER
+    } else {
+      state = stateOrOptions ?? SERVER
+      options = optionsOrNil
+    }
+
+    const signal = options?.signal
+    const timeout = options?.timeout ?? 2 * 60e3
+
+    if (signal?.aborted) {
+      return Promise.reject((signal.reason as Error) ?? new AbortError())
+    }
+    if (!Number.isFinite(state) || state < 0) {
+      return Promise.reject(new Error('invalid argument: state'))
+    }
+
+    let source: Observable<unknown> = this.subject.pipe(rxjs.filter((s) => s.state >= state))
+
+    if (timeout > 0) {
+      // Real: rejects with an ETIMEDOUT-coded error (record.js:315-325).
+      source = source.pipe(
+        rxjs.timeout({
+          first: timeout,
+          with: () =>
+            rxjs.throwError(() =>
+              timeoutError(
+                `timeout  ${this.name} [${RECORD_STATE_NAME[this.state]}<${RECORD_STATE_NAME[state]}]`,
+                {},
+              ),
+            ),
+        }),
+      )
+    }
+
+    if (signal) {
+      source = rxjs.merge(
+        source,
+        rxjs
+          .fromEvent(signal, 'abort')
+          .pipe(
+            rxjs.mergeMap(() =>
+              rxjs.throwError(() => (signal.reason as Error) ?? new AbortError()),
+            ),
+          ),
+      )
+    }
+
+    return firstValueFrom(source).then(() => this as unknown as DsRecord<Data>)
   }
 }
 

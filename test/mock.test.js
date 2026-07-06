@@ -252,7 +252,9 @@ describe('RecordHandler observe2', () => {
     ds.record.set('test:record', { a: 2 })
     const values = []
     const sub = ds.record.observe2('test:record').subscribe((v) => values.push(v))
-    assert.equal(values[0].version, '2')
+    // Versions carry a '-mock' rev suffix: real versions always match /^\d+-/
+    // (record.js:578-585; put() validates it, record-handler.js:420).
+    assert.equal(values[0].version, '2-mock')
     sub.unsubscribe()
   })
 
@@ -261,8 +263,8 @@ describe('RecordHandler observe2', () => {
     const sub = ds.record.observe2('test:record').subscribe((v) => versions.push(v.version))
     ds.record.set('test:record', { a: 1 })
     ds.record.set('test:record', { a: 2 })
-    // initial emission at SERVER (version '0'), then '1' and '2'
-    assert.deepEqual(versions, ['0', '1', '2'])
+    // initial emission at SERVER (version '0-mock'), then '1-mock' and '2-mock'
+    assert.deepEqual(versions, ['0-mock', '1-mock', '2-mock'])
     sub.unsubscribe()
   })
 })
@@ -289,9 +291,9 @@ describe('RecordHandler update', () => {
   test('update increments version', async () => {
     ds.record.set('test:record', { v: 0 })
     const record = ds.record.getRecord('test:record')
-    assert.equal(record.version, '1')
+    assert.equal(record.version, '1-mock')
     await ds.record.update('test:record', (d) => ({ ...d, v: 1 }))
-    assert.equal(record.version, '2')
+    assert.equal(record.version, '2-mock')
   })
 
   test('updater receives (data, version) — matches real client signature', async () => {
@@ -315,8 +317,11 @@ describe('RecordHandler update', () => {
   })
 
   test('update() waits for SERVER state before applying', async () => {
-    const subject = new rxjs.Subject()
-    ds.record.provide('test:record', () => subject)
+    // NOTE: this used to wait on a provider Subject, but that flow cannot work
+    // against the real client: provider data carries an I-version and update()
+    // then raises UPDATE_ERROR 'cannot update' (record.js:341-348). Use a
+    // CLIENT-state record instead, which is what update() genuinely waits out.
+    controller.setRecordState('test:record', ds.record.CLIENT, { count: 1 })
 
     let applied = false
     const updatePromise = ds.record.update('test:record', (data) => {
@@ -326,7 +331,7 @@ describe('RecordHandler update', () => {
 
     assert.equal(applied, false) // still waiting for SERVER state
 
-    subject.next({ count: 1 }) // → PROVIDER state (≥ SERVER)
+    controller.setRecordState('test:record', ds.record.SERVER, { count: 1 })
     await updatePromise
 
     assert.equal(applied, true)
@@ -508,13 +513,15 @@ describe('RecordHandler cleanup', () => {
 
 describe('MockRecord ref/unref', () => {
   test('tracks reference count', () => {
+    // Real: getRecord() itself refs the record (record-handler.js:235), so a
+    // freshly fetched record starts at 1, not 0.
     const record = ds.record.getRecord('test:record')
-    assert.equal(record.refs, 0)
-    record.ref()
-    record.ref()
-    assert.equal(record.refs, 2)
-    record.unref()
     assert.equal(record.refs, 1)
+    record.ref()
+    record.ref()
+    assert.equal(record.refs, 3)
+    record.unref()
+    assert.equal(record.refs, 2)
   })
 })
 
@@ -523,13 +530,15 @@ describe('MockRecord ref/unref', () => {
 // ---------------------------------------------------------------------------
 
 describe('MockRecord version', () => {
-  test('starts at 0 and increments with each set', () => {
+  test('starts at 0-mock and increments with each set', () => {
+    // Real versions always carry a '-<rev>' suffix (record.js:578-585); the
+    // mock uses '-mock' so code parsing versions behaves like production.
     const record = ds.record.getRecord('test:record')
-    assert.equal(record.version, '0')
+    assert.equal(record.version, '0-mock')
     ds.record.set('test:record', { a: 1 })
-    assert.equal(record.version, '1')
+    assert.equal(record.version, '1-mock')
     ds.record.set('test:record', { a: 2 })
-    assert.equal(record.version, '2')
+    assert.equal(record.version, '2-mock')
   })
 })
 
@@ -538,15 +547,16 @@ describe('MockRecord version', () => {
 // ---------------------------------------------------------------------------
 
 describe('MockRecord subscribe/unsubscribe', () => {
-  test('callback is invoked on subscribe (BehaviorSubject fires immediately) and on change', () => {
+  test('callback is invoked on each change but not on subscribe', () => {
+    // Real: subscribe() only registers the callback (record.js:98-108);
+    // it is never invoked synchronously on subscription.
     const record = ds.record.getRecord('test:record')
     const calls = []
     const cb = () => calls.push(record.data)
     record.subscribe(cb)
     ds.record.set('test:record', { v: 1 })
     ds.record.set('test:record', { v: 2 })
-    // fires once on subscribe (VOID state) + 2 sets
-    assert.equal(calls.length, 3)
+    assert.equal(calls.length, 2)
     record.unsubscribe(cb)
   })
 
@@ -665,10 +675,13 @@ describe('MockRpcHandler', () => {
     await assert.rejects(ds.rpc.make('b'))
   })
 
-  test('later provide() call overrides earlier one for same name', async () => {
+  test('later provide() call for the same name throws and keeps the first provider', async () => {
+    // Real: a duplicate provide raises PROVIDER_EXISTS through client error
+    // handling — which throws without an 'error' listener (rpc-handler.js:46-49
+    // + client.js:100-109) — and the first provider stays active.
     ds.rpc.provide('fn', () => 'first')
-    ds.rpc.provide('fn', () => 'second')
-    assert.equal(await ds.rpc.make('fn'), 'second')
+    assert.throws(() => ds.rpc.provide('fn', () => 'second'))
+    assert.equal(await ds.rpc.make('fn'), 'first')
   })
 
   test('stats.listeners reflects registered providers', () => {
@@ -688,8 +701,10 @@ describe('MockRpcHandler', () => {
   })
 
   test('response.reject() rejects make()', async () => {
+    // Real: reject() sends a REJECTION; with no other provider the server
+    // answers with NO_RPC_PROVIDER — there is no "rejected" message.
     ds.rpc.provide('rej', (_data, res) => res.reject())
-    await assert.rejects(ds.rpc.make('rej'), /rejected/)
+    await assert.rejects(ds.rpc.make('rej'), /NO_RPC_PROVIDER/)
   })
 
   test('response.completed prevents double-completion', () => {
@@ -783,8 +798,10 @@ describe('MockEventHandler', () => {
   })
 
   test('once() with one callback reused across events keeps the once guarantee', () => {
+    // Real once() passes the event NAME first: callback(name, data)
+    // (event-handler.js:79-86).
     const received = []
-    const cb = (d) => received.push(d)
+    const cb = (name, d) => received.push([name, d])
     ds.event.once('a', cb)
     ds.event.once('b', cb)
 
@@ -793,7 +810,10 @@ describe('MockEventHandler', () => {
     ds.event.emit('b', 'b1')
     ds.event.emit('b', 'b2') // must NOT fire again
 
-    assert.deepEqual(received, ['a1', 'b1'])
+    assert.deepEqual(received, [
+      ['a', 'a1'],
+      ['b', 'b1'],
+    ])
   })
 })
 
@@ -1026,7 +1046,7 @@ describe('RecordHandler get2', () => {
     const result = await ds.record.get2('test:record')
     assert.equal(result.name, 'test:record')
     assert.equal(result.state, ds.record.SERVER)
-    assert.equal(result.version, '1')
+    assert.equal(result.version, '1-mock')
     assert.deepEqual(result.data, { a: 1 })
   })
 
@@ -1106,20 +1126,24 @@ describe('MockEventHandler on/once/off', () => {
   })
 
   test('once() fires exactly once then auto-removes', () => {
+    // Real once() callbacks receive (name, data) (event-handler.js:79-86).
     const received = []
-    ds.event.once('topic', (d) => received.push(d))
+    ds.event.once('topic', (name, d) => received.push([name, d]))
     ds.event.emit('topic', 1)
     ds.event.emit('topic', 2)
-    assert.deepEqual(received, [1])
+    assert.deepEqual(received, [['topic', 1]])
   })
 
-  test('off() removes a once() listener before it fires', () => {
+  test('off() with the original callback does not cancel a pending once()', () => {
+    // Real: once() registers an anonymous wrapper; emitter.off(name, cb) only
+    // matches the exact function, so the wrapper still fires
+    // (event-handler.js:79-91).
     const received = []
-    const cb = (d) => received.push(d)
+    const cb = (name, d) => received.push([name, d])
     ds.event.once('topic', cb)
     ds.event.off('topic', cb)
-    ds.event.emit('topic', 'ignored')
-    assert.equal(received.length, 0)
+    ds.event.emit('topic', 'delivered')
+    assert.deepEqual(received, [['topic', 'delivered']])
   })
 })
 
@@ -1166,14 +1190,18 @@ describe('MockEventHandler connected / stats', () => {
     assert.equal(ds.event.connected, true)
   })
 
-  test('stats.listeners counts active subscriptions', () => {
+  test('stats.listeners counts provide() listeners, not subscriptions', () => {
+    // Real: stats.listeners is the number of provide() patterns; subscriptions
+    // only affect stats.events (event-handler.js:34-42). The mock has no
+    // event.provide(), so listeners stays 0.
     const cb1 = () => {}
     const cb2 = () => {}
     ds.event.subscribe('a', cb1)
     ds.event.subscribe('b', cb2)
-    assert.equal(ds.event.stats.listeners, 2)
+    assert.equal(ds.event.stats.listeners, 0)
+    assert.equal(ds.event.stats.events, 2)
     ds.event.unsubscribe('a', cb1)
-    assert.equal(ds.event.stats.listeners, 1)
+    assert.equal(ds.event.stats.events, 1)
   })
 
   test('stats.events counts distinct event names with subscribers', () => {
@@ -1813,5 +1841,34 @@ describe('fidelity: event stats & validation', () => {
     assert.throws(() => ds.event.subscribe('x', 'nope'), /invalid argument/)
     assert.throws(() => ds.event.unsubscribe(''), /invalid argument/)
     assert.throws(() => ds.event.emit(''), /invalid argument/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: bound handler methods
+// ---------------------------------------------------------------------------
+
+describe('fidelity: bound handler methods', () => {
+  test('destructured handler methods work like the real client', async () => {
+    // Real: the handlers bind their public API in the constructor
+    // (record-handler.js:125-132, rpc-handler.js:15-17, event-handler.js:19-23).
+    const { set, get, observe } = ds.record
+    const { provide, make } = ds.rpc
+    const { emit, subscribe } = ds.event
+
+    set('test:record', { a: 1 })
+    assert.deepEqual(await get('test:record'), { a: 1 })
+    const values = []
+    const sub = observe('test:record').subscribe((v) => values.push(v))
+    assert.deepEqual(values, [{ a: 1 }])
+    sub.unsubscribe()
+
+    provide('fn', () => 'ok')
+    assert.equal(await make('fn'), 'ok')
+
+    const received = []
+    subscribe('topic', (d) => received.push(d))
+    emit('topic', 7)
+    assert.deepEqual(received, [7])
   })
 })
