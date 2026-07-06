@@ -1217,3 +1217,601 @@ describe('MockDeepstreamClient CONSTANTS', () => {
     assert.equal(RECORD_STATE.PROVIDER, ds.record.PROVIDER)
   })
 })
+
+// ===========================================================================
+// Fidelity tests — each block documents a divergence from the real client,
+// citing the real implementation (src/record/record.js, record-handler.js,
+// rpc-handler.js, rpc-response.js, event-handler.js, utils/legacy-listener.js).
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Fidelity: MockRecord.set
+// ---------------------------------------------------------------------------
+
+describe('fidelity: record.set', () => {
+  test('set with deep-equal data is a no-op (no version bump, no emission)', () => {
+    // Real: set → _update(jsonPath.set(data, path, value, false)). jsonPath.set
+    // returns the SAME reference for deep-equal values (structural sharing) and
+    // _update early-returns on nextData === this._data (record.js:441-443), so
+    // there is no version bump and no subscriber emission.
+    ds.record.set('test:record', { a: 1 })
+    const record = ds.record.getRecord('test:record')
+    const version = record.version
+    const values = []
+    const sub = ds.record.observe2('test:record').subscribe((v) => values.push(v))
+    const count = values.length
+    ds.record.set('test:record', { a: 1 }) // deep-equal → no-op in the real client
+    assert.equal(record.version, version)
+    assert.equal(values.length, count)
+    sub.unsubscribe()
+  })
+
+  test('set at a path with a deep-equal value is a no-op', () => {
+    ds.record.set('test:record', { a: { b: 1 }, c: 2 })
+    const record = ds.record.getRecord('test:record')
+    const version = record.version
+    ds.record.set('test:record', 'a', { b: 1 })
+    assert.equal(record.version, version)
+  })
+
+  test('whole-record set requires a plain object (record.js:210-212)', () => {
+    assert.throws(() => ds.record.set('test:record', 'a string'), /invalid argument/)
+    assert.throws(() => ds.record.set('test:record', [1, 2]), /invalid argument/)
+    assert.throws(() => ds.record.set('test:record', 42), /invalid argument/)
+  })
+
+  test('whole-record set rejects top-level keys starting with underscore (record.js:213-215)', () => {
+    assert.throws(() => ds.record.set('test:record', { _hidden: 1 }), /invalid argument/)
+  })
+
+  test('set rejects invalid paths (record.js:216-222)', () => {
+    assert.throws(() => ds.record.set('test:record', '', 1), /invalid argument/)
+    assert.throws(() => ds.record.set('test:record', '_x', 1), /invalid argument/)
+    assert.throws(() => ds.record.set('test:record', ['_x'], 1), /invalid argument/)
+  })
+
+  test('set on a record whose name starts with underscore errors (record.js:202-205)', () => {
+    // Real: USER_ERROR 'cannot set' routed through client error handling, which
+    // throws when no 'error' listener is registered (client.js:100-109).
+    assert.throws(() => ds.record.set('_private', { a: 1 }), /cannot set/)
+  })
+
+  test('set stores a JSON clone — caller mutations do not leak in (jsonPath jsonClone)', () => {
+    const input = { a: { b: 1 } }
+    ds.record.set('test:record', input)
+    input.a.b = 999
+    assert.equal(ds.record.getRecord('test:record').get('a.b'), 1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: MockRecord.update
+// ---------------------------------------------------------------------------
+
+describe('fidelity: record.update', () => {
+  test('whole-record updater returning null is a no-op (record.js:375)', async () => {
+    // Real: `if (prev !== next && (path || next != null)) this.set(path, next)`
+    // — without a path, a null/undefined updater result must NOT be written.
+    ds.record.set('test:record', { a: 1 })
+    await ds.record.update('test:record', () => null)
+    assert.deepEqual(await ds.record.get('test:record'), { a: 1 })
+  })
+
+  test('rejects when the signal is already aborted (record.js:366-368)', async () => {
+    await assert.rejects(ds.record.update('test:record', (d) => d, { signal: AbortSignal.abort() }))
+  })
+
+  test('non-function updater rejects with invalid argument (record.js:354-356)', async () => {
+    await assert.rejects(ds.record.update('test:record', 'nope'), /invalid argument/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: refs & Symbol.dispose
+// ---------------------------------------------------------------------------
+
+describe('fidelity: refs & dispose', () => {
+  test('getRecord() refs the record (record-handler.js:235 returns record.ref())', () => {
+    const record = ds.record.getRecord('test:record')
+    assert.equal(record.refs, 1)
+    ds.record.getRecord('test:record')
+    assert.equal(record.refs, 2)
+  })
+
+  test('Symbol.dispose unrefs instead of tearing the record down (record.js:89-91)', () => {
+    // Real: dispose is a plain unref(). The mock used to run cleanup(), which
+    // killed the provider subscription for every other user of the record.
+    const subject = new rxjs.BehaviorSubject({ n: 0 })
+    ds.record.provide('test:record', () => subject)
+    const record = ds.record.getRecord('test:record')
+    record[Symbol.dispose]()
+    assert.equal(record.refs, 0)
+    subject.next({ n: 1 })
+    assert.deepEqual(record.data, { n: 1 }) // provider must still be wired
+  })
+
+  test('handler methods leave refs balanced like the real handler', async () => {
+    // Real handler.set/update/get acquire the record and unref when done
+    // (record-handler.js:406-413, 450-461, 518-525, observe teardown 657-674).
+    ds.record.set('test:record', { a: 1 })
+    await ds.record.update('test:record', (d) => ({ ...d, b: 2 }))
+    await ds.record.get('test:record')
+    const sub = ds.record.observe('test:record').subscribe(() => {})
+    sub.unsubscribe()
+    const record = ds.record.getRecord('test:record')
+    assert.equal(record.refs, 1) // only our own getRecord above
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: MockRecord.subscribe
+// ---------------------------------------------------------------------------
+
+describe('fidelity: record.subscribe', () => {
+  test('does not invoke the callback on subscribe (record.js:98-108)', () => {
+    // Real: subscribe() only registers; callbacks fire on subsequent updates
+    // via _emitUpdate. The mock used a BehaviorSubject which fired immediately.
+    ds.record.set('test:record', { a: 1 })
+    const record = ds.record.getRecord('test:record')
+    let calls = 0
+    record.subscribe(() => calls++)
+    assert.equal(calls, 0)
+    ds.record.set('test:record', { a: 2 })
+    assert.equal(calls, 1)
+  })
+
+  test('unsubscribe matches the (callback, opaque) pair (record.js:116-141)', () => {
+    // Real: unsubscribe(fn) defaults opaque to null and only removes an exact
+    // (fn, opaque) match.
+    const record = ds.record.getRecord('test:record')
+    let calls = 0
+    const cb = () => calls++
+    record.subscribe(cb, 'token')
+    record.unsubscribe(cb) // (cb, null) — must NOT remove (cb, 'token')
+    ds.record.set('test:record', { a: 1 })
+    assert.equal(calls, 1)
+    record.unsubscribe(cb, 'token')
+    ds.record.set('test:record', { a: 2 })
+    assert.equal(calls, 1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: MockRecord.when options
+// ---------------------------------------------------------------------------
+
+describe('fidelity: record.when options', () => {
+  test('timeout rejection carries code ETIMEDOUT (record.js:315-325)', async () => {
+    const record = ds.record.getRecord('test:record')
+    await assert.rejects(record.when(ds.record.PROVIDER, { timeout: 10 }), (err) => {
+      assert.equal(err.code, 'ETIMEDOUT')
+      return true
+    })
+  })
+
+  test('rejects an invalid state (record.js:259-261)', async () => {
+    const record = ds.record.getRecord('test:record')
+    await assert.rejects(record.when(-1), /invalid argument/)
+    await assert.rejects(record.when(NaN), /invalid argument/)
+  })
+
+  test('rejects immediately when the signal is already aborted (record.js:255-257)', async () => {
+    const record = ds.record.getRecord('test:record')
+    await assert.rejects(
+      record.when(ds.record.PROVIDER, { signal: AbortSignal.abort(), timeout: 1000 }),
+      (err) => {
+        assert.equal(err.name, 'AbortError') // real rejects with signal.reason
+        return true
+      },
+    )
+  })
+
+  test('rejects when the signal aborts while waiting (record.js:278-280, 328-331)', async () => {
+    const ac = new AbortController()
+    const record = ds.record.getRecord('test:record')
+    const pending = assert.rejects(
+      record.when(ds.record.PROVIDER, { signal: ac.signal, timeout: 1000 }),
+    )
+    ac.abort()
+    await pending
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: observe dedup (dataOnly)
+// ---------------------------------------------------------------------------
+
+describe('fidelity: observe dedup', () => {
+  test('observe(path) does not re-emit when data at the path is unchanged (record-handler.js:58-62)', () => {
+    // Real: dataOnly subscriptions only notify when the selected data actually
+    // changed (`data !== subscription.data`); structural sharing keeps refs
+    // stable for untouched paths.
+    ds.record.set('test:record', { a: 1, b: 1 })
+    const values = []
+    const sub = ds.record.observe('test:record', 'a').subscribe((v) => values.push(v))
+    ds.record.set('test:record', 'b', 2) // unrelated path
+    assert.deepEqual(values, [1])
+    sub.unsubscribe()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: paths and selectors
+// ---------------------------------------------------------------------------
+
+describe('fidelity: paths and selectors', () => {
+  test('get supports array paths (record-handler.js:559-566)', async () => {
+    ds.record.set('test:record', { a: { b: 7 } })
+    assert.equal(await ds.record.get('test:record', ['a', 'b']), 7)
+  })
+
+  test('observe supports array paths', () => {
+    ds.record.set('test:record', { a: { b: 7 } })
+    const values = []
+    const sub = ds.record.observe('test:record', ['a', 'b']).subscribe((v) => values.push(v))
+    assert.deepEqual(values, [7])
+    sub.unsubscribe()
+  })
+
+  test('get supports function selectors (record-handler.js:559-566 + record.js:189-190)', async () => {
+    ds.record.set('test:record', { a: 3 })
+    assert.equal(await ds.record.get('test:record', (d) => d.a * 2), 6)
+  })
+
+  test('record.get supports a function mapper (record.js:189-190, also declared in record.d.ts)', () => {
+    ds.record.set('test:record', { a: 3 })
+    assert.equal(
+      ds.record.getRecord('test:record').get((d) => d.a),
+      3,
+    )
+  })
+
+  test('record.get throws on an invalid path argument (record.js:192)', () => {
+    assert.throws(() => ds.record.getRecord('test:record').get(42), /invalid argument/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: default state thresholds
+// ---------------------------------------------------------------------------
+
+describe('fidelity: default state thresholds', () => {
+  // Real defaults (record-handler.js:17-33): only observe() defaults to SERVER
+  // (OBSERVE_DEFAULTS.state). get/get2/observe2/getAsync default to CLIENT
+  // (their defaults objects have no state; _observe falls back to CLIENT,
+  // record-handler.js:488 and 551).
+  test('observe2 emits CLIENT-state records by default', () => {
+    controller.setRecordState('test:record', ds.record.CLIENT, { a: 1 })
+    const values = []
+    const sub = ds.record.observe2('test:record').subscribe((v) => values.push(v))
+    assert.equal(values.length, 1)
+    assert.equal(values[0].state, ds.record.CLIENT)
+    sub.unsubscribe()
+  })
+
+  test('getAsync resolves synchronously at CLIENT state', () => {
+    controller.setRecordState('test:record', ds.record.CLIENT, { a: 1 })
+    const result = ds.record.getAsync('test:record')
+    assert.equal(result.async, false)
+    assert.deepEqual(result.value, { a: 1 })
+  })
+
+  test('observe still defaults to SERVER', () => {
+    controller.setRecordState('test:record', ds.record.CLIENT, { a: 1 })
+    const values = []
+    const sub = ds.record.observe('test:record').subscribe((v) => values.push(v))
+    assert.equal(values.length, 0)
+    sub.unsubscribe()
+  })
+
+  test('getAsync with an options argument is always async (record-handler.js:506-508)', () => {
+    ds.record.set('test:record', { a: 1 })
+    const result = ds.record.getAsync('test:record', {})
+    assert.equal(result.async, true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: observe/get timeout & signal
+// ---------------------------------------------------------------------------
+
+describe('fidelity: observe/get timeout & signal', () => {
+  test('get rejects with ETIMEDOUT when the state is not reached in time (record-handler.js:73-98, 690-692)', async () => {
+    ds.record.provide('test:record', () => new rxjs.Subject()) // record stays below SERVER
+    const result = await Promise.race([
+      ds.record.get('test:record', { timeout: 10 }).then(
+        () => 'resolved',
+        (err) => err,
+      ),
+      new Promise((resolve) => setTimeout(() => resolve('still pending'), 250)),
+    ])
+    assert.ok(result instanceof Error, `expected an ETIMEDOUT rejection, got: ${result}`)
+    assert.equal(result.code, 'ETIMEDOUT')
+  })
+
+  test('observe errors immediately when the signal is already aborted (record-handler.js:622-624)', () => {
+    const errors = []
+    const sub = ds.record
+      .observe('test:record', ds.record.PROVIDER, { signal: AbortSignal.abort() })
+      .subscribe({ next: () => {}, error: (e) => errors.push(e) })
+    assert.equal(errors.length, 1)
+    assert.equal(errors[0].name, 'AbortError')
+    sub.unsubscribe()
+  })
+
+  test('observe errors when the signal aborts while subscribed (record-handler.js:676-679)', () => {
+    const ac = new AbortController()
+    const errors = []
+    const sub = ds.record
+      .observe('test:record', ds.record.PROVIDER, { signal: ac.signal })
+      .subscribe({ next: () => {}, error: (e) => errors.push(e) })
+    ac.abort()
+    assert.equal(errors.length, 1)
+    sub.unsubscribe()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: RecordHandler.provide / getRecord / put validation
+// ---------------------------------------------------------------------------
+
+describe('fidelity: record provide validation', () => {
+  test('duplicate pattern throws (record-handler.js:252-254)', () => {
+    ds.record.provide('test:.*', () => null)
+    assert.throws(() => ds.record.provide('test:.*', () => null), /already provided/)
+  })
+
+  test('re-providing after dispose is allowed', () => {
+    const dispose = ds.record.provide('test:.*', () => null)
+    dispose()
+    assert.doesNotThrow(() => ds.record.provide('test:.*', () => null))
+  })
+
+  test('validates pattern and callback (record-handler.js:238-243)', () => {
+    assert.throws(() => ds.record.provide('', () => null), /invalid argument/)
+    assert.throws(() => ds.record.provide('x', 'not a function'), /invalid argument/)
+  })
+})
+
+describe('fidelity: lazy record acquisition', () => {
+  test('observe does not create the record until subscribed (record-handler.js:681)', () => {
+    // Real: the record is acquired inside the Observable subscribe function.
+    const calls = []
+    ds.record.provide('test:.*', (name) => {
+      calls.push(name)
+      return { p: 1 }
+    })
+    const obs = ds.record.observe('test:lazy')
+    assert.equal(ds.record.stats.records, 0)
+    assert.equal(calls.length, 0)
+    const sub = obs.subscribe(() => {})
+    assert.equal(ds.record.stats.records, 1)
+    assert.deepEqual(calls, ['test:lazy'])
+    sub.unsubscribe()
+  })
+})
+
+describe('fidelity: getRecord & put validation', () => {
+  test('getRecord validates the name (record-handler.js:213-215)', () => {
+    assert.throws(() => ds.record.getRecord(''), /invalid argument/)
+    assert.throws(() => ds.record.getRecord(42), /invalid argument/)
+  })
+
+  test('put validates version format (record-handler.js:420-422)', () => {
+    assert.throws(() => ds.record.put('test:record', '5', {}), /invalid argument/)
+    assert.throws(() => ds.record.put('test:record', 'x-5', {}), /invalid argument/)
+  })
+
+  test('put validates name and data (record-handler.js:415-426)', () => {
+    assert.throws(() => ds.record.put('_x', '1-abc', {}), /invalid argument/)
+    assert.throws(() => ds.record.put('test:record', '1-abc', 'str'), /invalid argument/)
+  })
+
+  test('valid put applies version and data', () => {
+    ds.record.put('test:record', '5-abc', { a: 1 })
+    const record = ds.record.getRecord('test:record')
+    assert.equal(record.version, '5-abc')
+    assert.deepEqual(record.data, { a: 1 })
+  })
+
+  test('stats.created counts created records (record-handler.js:230-232)', () => {
+    ds.record.getRecord('test:a')
+    ds.record.getRecord('test:a')
+    ds.record.getRecord('test:b')
+    assert.equal(ds.record.stats.created, 2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: provider versions & write guards
+// ---------------------------------------------------------------------------
+
+describe('fidelity: provider versions & guards', () => {
+  test('provider updates carry I-prefixed versions (legacy-listener.js:170-181)', () => {
+    // Real: both listener implementations send provider values as
+    // `INF-${hash(payload)}` versions.
+    ds.record.provide('test:record', () => ({ p: 1 }))
+    const record = ds.record.getRecord('test:record')
+    assert.equal(record.state, ds.record.PROVIDER)
+    assert.match(record.version, /^INF-/)
+  })
+
+  test('set() on a provided record throws cannot set (record.js:202-205)', () => {
+    // Real: provided records have I-versions, and set() on an I-version record
+    // raises USER_ERROR 'cannot set' (throws without an error listener).
+    ds.record.provide('test:record', () => ({ p: 1 }))
+    ds.record.getRecord('test:record')
+    assert.throws(() => ds.record.set('test:record', { a: 1 }), /cannot set/)
+  })
+
+  test('update() on a provided record rejects cannot update (record.js:341-348)', async () => {
+    ds.record.provide('test:record', () => ({ p: 1 }))
+    ds.record.getRecord('test:record')
+    await assert.rejects(
+      ds.record.update('test:record', (d) => ({ ...d, x: 1 })),
+      /cannot update/,
+    )
+  })
+
+  test('identical provider payloads are deduped (legacy-listener.js:174-181)', () => {
+    // Real: the listener hashes the payload and skips the send when the version
+    // (hash) is unchanged, so deep-equal re-emissions never reach subscribers.
+    const subject = new rxjs.Subject()
+    ds.record.provide('test:record', () => subject)
+    const entries = []
+    const sub = ds.record.observe2('test:record', ds.record.VOID).subscribe((e) => entries.push(e))
+    const initial = entries.length
+    subject.next({ n: 1 })
+    subject.next({ n: 1 }) // deep-equal → same INF hash → dropped in real
+    subject.next({ n: 2 })
+    assert.equal(entries.length - initial, 2)
+    sub.unsubscribe()
+  })
+
+  test('provider emitting null withdraws the provider → STALE (legacy-listener.js:141-143 + record.js:550-567)', () => {
+    // Real: a null value makes the listener reject the subscription; the server
+    // reports hasProvider=false and an I-versioned record goes STALE, keeping
+    // its data.
+    const subject = new rxjs.BehaviorSubject({ n: 1 })
+    ds.record.provide('test:record', () => subject)
+    const record = ds.record.getRecord('test:record')
+    assert.equal(record.state, ds.record.PROVIDER)
+    subject.next(null)
+    assert.equal(record.state, ds.record.STALE)
+    assert.deepEqual(record.data, { n: 1 })
+  })
+
+  test('client-set versions carry a rev suffix like the real client (record.js:578-585)', () => {
+    // Real versions always match /^\d+-.+/ (put() even validates this,
+    // record-handler.js:420). Plain integer strings break real utils.splitRev.
+    ds.record.set('test:record', { a: 1 })
+    assert.match(ds.record.getRecord('test:record').version, /^1-.+/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: RPC errors
+// ---------------------------------------------------------------------------
+
+describe('fidelity: rpc errors', () => {
+  test('response.error(string) rejects with an Error carrying rpcName/rpcData (rpc-handler.js:148-162)', async () => {
+    // Real: the caller always receives `Object.assign(new Error(data),
+    // { rpcId, rpcName, rpcData })` — never the raw value.
+    ds.rpc.provide('fail', (_d, res) => res.error('oops'))
+    await assert.rejects(ds.rpc.make('fail', { x: 1 }), (err) => {
+      assert.ok(err instanceof Error)
+      assert.equal(err.message, 'oops')
+      assert.equal(err.rpcName, 'fail')
+      assert.deepEqual(err.rpcData, { x: 1 })
+      return true
+    })
+  })
+
+  test('a throwing provider rejects with a fresh Error — only the message crosses the wire (rpc-response.js:20-32)', async () => {
+    const original = new Error('boom')
+    ds.rpc.provide('explode', () => {
+      throw original
+    })
+    await assert.rejects(ds.rpc.make('explode'), (err) => {
+      assert.ok(err instanceof Error)
+      assert.equal(err.message, 'boom')
+      assert.notEqual(err, original)
+      assert.equal(err.rpcName, 'explode')
+      return true
+    })
+  })
+
+  test('callback-style make() also receives wrapped Errors', (_, done) => {
+    ds.rpc.provide('boom', (_d, res) => res.error('bad'))
+    ds.rpc.make('boom', undefined, (err) => {
+      assert.ok(err instanceof Error)
+      assert.equal(err.message, 'bad')
+      assert.equal(err.rpcName, 'boom')
+      done()
+    })
+  })
+
+  test('response.reject() surfaces NO_RPC_PROVIDER like the real server round-trip', async () => {
+    // Real: reject() sends a REJECTION (rpc-response.js:11-18); with no other
+    // provider the server answers with a NO_RPC_PROVIDER error — the caller
+    // never sees a "rejected" message.
+    ds.rpc.provide('rej', (_d, res) => res.reject())
+    await assert.rejects(ds.rpc.make('rej'), (err) => {
+      assert.equal(err.message, 'NO_RPC_PROVIDER')
+      return true
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: RPC provide/unprovide semantics
+// ---------------------------------------------------------------------------
+
+describe('fidelity: rpc provide/unprovide', () => {
+  test('duplicate provide throws PROVIDER_EXISTS and keeps the first provider (rpc-handler.js:46-49)', async () => {
+    // Real: a second provide for the same name raises PROVIDER_EXISTS through
+    // client error handling — which throws when no 'error' listener is
+    // registered (client.js:100-109) — and the first provider stays active.
+    ds.rpc.provide('fn', () => 'first')
+    assert.throws(() => ds.rpc.provide('fn', () => 'second'))
+    assert.equal(await ds.rpc.make('fn'), 'first')
+  })
+
+  test('unprovide of a missing name throws NOT_PROVIDING (rpc-handler.js:70-73)', () => {
+    assert.throws(() => ds.rpc.unprovide('missing'))
+  })
+
+  test('validates name and callback (rpc-handler.js:38-44, 83-96)', () => {
+    assert.throws(() => ds.rpc.provide('', () => {}), /invalid argument/)
+    assert.throws(() => ds.rpc.provide('x', 'nope'), /invalid argument/)
+    assert.throws(() => ds.rpc.make(''), /invalid argument/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fidelity: events
+// ---------------------------------------------------------------------------
+
+describe('fidelity: event once/off', () => {
+  test('once() callback receives (name, data) like the real client (event-handler.js:79-86)', () => {
+    // NOTE: the real implementation passes the event NAME as the first argument
+    // (`callback(name, ...args)`), even though event-handler.d.ts declares
+    // `(data) => void`. The mock mirrors the runtime behavior; the impl/types
+    // mismatch is flagged for the real client.
+    const received = []
+    ds.event.once('topic', (...args) => received.push(args))
+    ds.event.emit('topic', 42)
+    assert.deepEqual(received, [['topic', 42]])
+  })
+
+  test('off() with the original callback does not remove a pending once() wrapper (event-handler.js:79-91)', () => {
+    // Real: once() registers an anonymous wrapper via subscribe(); emitter.off
+    // only matches the exact function (or fn.fn, which the wrapper does not
+    // set), so off(name, cb) cannot cancel a pending once(name, cb).
+    let calls = 0
+    const cb = () => calls++
+    ds.event.once('topic', cb)
+    ds.event.off('topic', cb)
+    ds.event.emit('topic')
+    assert.equal(calls, 1)
+  })
+})
+
+describe('fidelity: event stats & validation', () => {
+  test('stats.listeners counts provide() listeners, not subscriptions (event-handler.js:34-42)', () => {
+    // Real: `listeners: this._listeners.size` counts provide() patterns;
+    // subscriptions only influence `events` (distinct subscribed names).
+    ds.event.subscribe('a', () => {})
+    ds.event.subscribe('a', () => {})
+    ds.event.subscribe('b', () => {})
+    assert.equal(ds.event.stats.listeners, 0) // the mock has no event.provide()
+    assert.equal(ds.event.stats.events, 2)
+  })
+
+  test('validates names and callbacks (event-handler.js:44-50, 59-64, 103-106)', () => {
+    assert.throws(() => ds.event.subscribe('', () => {}), /invalid argument/)
+    assert.throws(() => ds.event.subscribe('x', 'nope'), /invalid argument/)
+    assert.throws(() => ds.event.unsubscribe(''), /invalid argument/)
+    assert.throws(() => ds.event.emit(''), /invalid argument/)
+  })
+})
