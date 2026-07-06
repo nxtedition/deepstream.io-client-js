@@ -112,21 +112,21 @@ export class MockRpcHandler<
   provide<Name extends string & keyof Methods>(
     name: Name,
     callback: (data: Methods[Name][0], response: MockRpcResponse<Methods[Name][1]>) => unknown,
-  ): () => void
+  ): Disposer
   provide(
     name: string,
     callback: (data: unknown, response: MockRpcResponse<unknown>) => unknown,
-  ): () => void
+  ): Disposer
   provide(
     name: string,
     callback: (data: unknown, response: MockRpcResponse<unknown>) => unknown,
-  ): () => void {
+  ): Disposer {
     this._providers.set(name, callback)
-    return () => {
+    return makeDisposer(() => {
       if (this._providers.get(name) === callback) {
         this._providers.delete(name)
       }
-    }
+    })
   }
 
   unprovide<Name extends string & keyof Methods>(name: Name): void
@@ -312,7 +312,7 @@ export class MockEventHandler implements EventHandler {
     })
   }
 
-  provide(_pattern: string, _callback: (name: string) => void, _options: unknown): () => void {
+  provide(_pattern: string, _callback: (name: string) => void, _options: unknown): Disposer {
     throw new Error('MockEventHandler.provide() is not implemented')
   }
 

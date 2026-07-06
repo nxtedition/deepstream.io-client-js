@@ -14,7 +14,7 @@ export default class RpcHandler<
       args: Methods[Name][0],
       response: RpcResponse<Methods[Name][1]>,
     ) => Methods[Name][1] | Promise<Methods[Name][1]> | Promise<void> | void,
-  ) => UnprovideFn | void
+  ) => UnprovideFn | undefined
 
   unprovide: <Name extends keyof Methods>(name: Name) => void
 
@@ -39,7 +39,7 @@ export default class RpcHandler<
   }
 }
 
-type UnprovideFn = () => void
+type UnprovideFn = (() => void) & Disposable
 
 export interface RpcStats {
   listeners: number

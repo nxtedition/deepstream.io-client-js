@@ -283,6 +283,19 @@ if (recordDisposer) {
 // event.provide: returns (() => void) | void
 expectAssignable<(() => void) | void>(ds.event.provide('pattern*', () => {}, {}))
 
+// event.provide: disposer supports Symbol.dispose
+const eventDisposer = ds.event.provide('pattern*', () => {}, {})
+if (eventDisposer) {
+  eventDisposer()
+  eventDisposer[Symbol.dispose]()
+}
+
+// event.provide: disposer works with using declarations
+export function eventProvideUsing() {
+  using disposer = ds.event.provide('pattern*', () => {}, {})
+  expectAssignable<(() => void) | undefined>(disposer)
+}
+
 // client.on/off: 'error' is a valid event name
 ds.on('error', (err) => {})
 ds.off('error', (err) => {})

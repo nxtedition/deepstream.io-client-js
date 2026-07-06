@@ -262,10 +262,12 @@ class RecordHandler {
     this._listeners.set(pattern, listener)
 
     const disposer = () => {
-      listener._$destroy()
+      if (this._listeners.get(pattern) === listener) {
+        listener._$destroy()
 
-      this._stats.listeners -= 1
-      this._listeners.delete(pattern)
+        this._stats.listeners -= 1
+        this._listeners.delete(pattern)
+      }
     }
     disposer[Symbol.dispose] = disposer
 

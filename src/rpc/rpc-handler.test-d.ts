@@ -27,6 +27,19 @@ ds.rpc.provide('greet', (_args, response) => {
 // provide: return type is UnprovideFn | void
 expectAssignable<(() => void) | void>(ds.rpc.provide('greet', () => {}))
 
+// provide: disposer supports Symbol.dispose
+const rpcDisposer = ds.rpc.provide('greet', () => ({ message: 'hello' }))
+if (rpcDisposer) {
+  rpcDisposer()
+  rpcDisposer[Symbol.dispose]()
+}
+
+// provide: disposer works with using declarations
+export function rpcProvideUsing() {
+  using disposer = ds.rpc.provide('greet', () => ({ message: 'hello' }))
+  expectAssignable<(() => void) | undefined>(disposer)
+}
+
 // make: args is optional (no args)
 expectAssignable<Promise<{ message: string }>>(ds.rpc.make('greet'))
 // make: args provided

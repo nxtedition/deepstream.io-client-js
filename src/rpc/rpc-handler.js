@@ -55,7 +55,9 @@ RpcHandler.prototype.provide = function (name, callback) {
   }
 
   const disposer = () => {
-    this.unprovide(name)
+    if (this._providers.get(name) === callback) {
+      this.unprovide(name)
+    }
   }
   disposer[Symbol.dispose] = disposer
 
