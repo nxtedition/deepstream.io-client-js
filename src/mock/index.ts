@@ -548,9 +548,19 @@ export class MockRecordHandler<
     }
   }
 
+  // The real provider infrastructure flattens providers that emit
+  // observables (a common provider shape is an outer record observe mapping
+  // each emission to an inner pipeline); mirror it recursively so provided
+  // record data is never an Observable instance.
+  private _flatten(value: unknown): Observable<unknown> {
+    return value instanceof Observable
+      ? value.pipe(rxjs.switchMap((inner) => this._flatten(inner)))
+      : rxjs.of(value)
+  }
+
   private _toObservable(value: unknown): Observable<unknown> | null {
     if (value instanceof Observable) {
-      return value
+      return this._flatten(value)
     }
     if (value != null) {
       return new BehaviorSubject(value)
@@ -1078,7 +1088,10 @@ export class MockRecord<Data = unknown> implements DsRecord<Data> {
   set(pathOrData: unknown, value?: unknown): void {
     this._fromProvider = false
     this.version = `${parseInt(this.version, 10) + 1}`
-    if (value !== undefined) {
+    // The real client disambiguates the overloads on argument count, not on
+    // the value: set(path, undefined) clears the path, it must not replace
+    // the record data with the path string.
+    if (arguments.length >= 2) {
       this.subject.next({
         state: SERVER,
         data: jsonPath.set(this.data, pathOrData, value) as Data,
