@@ -14,7 +14,7 @@ export default class EventHandler {
     pattern: string,
     callback: (name: string) => void,
     options: EventProvideOptions,
-  ) => (() => void) | void
+  ) => ((() => void) & Disposable) | undefined
 }
 
 export interface EventProvideOptions {

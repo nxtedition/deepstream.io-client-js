@@ -131,8 +131,10 @@ EventHandler.prototype.provide = function (pattern, callback, options) {
   this._listeners.set(pattern, listener)
 
   const disposer = () => {
-    listener._$destroy()
-    this._listeners.delete(pattern)
+    if (this._listeners.get(pattern) === listener) {
+      listener._$destroy()
+      this._listeners.delete(pattern)
+    }
   }
   disposer[Symbol.dispose] = disposer
 
