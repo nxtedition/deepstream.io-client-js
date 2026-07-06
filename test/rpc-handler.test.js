@@ -25,8 +25,8 @@ function createMockClient(state = C.CONNECTION_STATE.OPEN) {
   }
 }
 
-// We can't import the handler directly because it depends on xxhash-wasm (top-level await).
-// Instead, we dynamically import after setting up mocks.
+// RpcHandler has no top-level-await dependency chain, but we mirror the
+// dynamic-import pattern of the other handler tests for consistency.
 let RpcHandler
 
 describe('RpcHandler.provide', async () => {
