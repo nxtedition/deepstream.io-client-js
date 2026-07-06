@@ -230,7 +230,9 @@ export class MockRpcHandler<
 
 export class MockEventHandler implements EventHandler {
   private _subscriptions = new Map<string, Set<(data: unknown) => void>>()
-  private _onceWrappers = new Map<(data: unknown) => void, (data: unknown) => void>()
+  // Keyed by event name so the same callback can be registered as a once()
+  // listener on multiple events without the wrappers colliding.
+  private _onceWrappers = new Map<string, Map<(data: unknown) => void, (data: unknown) => void>>()
   private _emittedCount = 0
 
   get connected(): boolean {
@@ -288,15 +290,23 @@ export class MockEventHandler implements EventHandler {
       this.off(name, callback)
       callback(data)
     }
-    this._onceWrappers.set(callback, wrapper)
+    let wrappers = this._onceWrappers.get(name)
+    if (!wrappers) {
+      this._onceWrappers.set(name, (wrappers = new Map()))
+    }
+    wrappers.set(callback, wrapper)
     this.subscribe(name, wrapper)
     return this
   }
 
   off(name: string, callback: (data: unknown) => void): this {
-    const wrapper = this._onceWrappers.get(callback)
+    const wrappers = this._onceWrappers.get(name)
+    const wrapper = wrappers?.get(callback)
     if (wrapper) {
-      this._onceWrappers.delete(callback)
+      wrappers!.delete(callback)
+      if (wrappers!.size === 0) {
+        this._onceWrappers.delete(name)
+      }
       this.unsubscribe(name, wrapper)
     } else {
       this.unsubscribe(name, callback)
