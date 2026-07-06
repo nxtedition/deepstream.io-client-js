@@ -272,16 +272,16 @@ expectType<number>(ds.record.STATE[unknownState])
 const recDispose = ds.record.getRecord('o')
 recDispose[Symbol.dispose]()
 
-// record.provide: returns Disposer | void
-expectAssignable<(() => void) | void>(ds.record.provide('pattern*', () => ({})))
+// record.provide: returns (() => void) & Disposable
+expectAssignable<() => void>(ds.record.provide('pattern*', () => ({})))
 const recordDisposer = ds.record.provide('pattern*', () => ({}))
 if (recordDisposer) {
   recordDisposer()
   recordDisposer[Symbol.dispose]()
 }
 
-// event.provide: returns (() => void) | void
-expectAssignable<(() => void) | void>(ds.event.provide('pattern*', () => {}, {}))
+// event.provide: returns ((() => void) & Disposable) | undefined
+expectAssignable<(() => void) | undefined>(ds.event.provide('pattern*', () => {}, {}))
 
 // event.provide: disposer supports Symbol.dispose
 const eventDisposer = ds.event.provide('pattern*', () => {}, {})

@@ -24,8 +24,8 @@ ds.rpc.provide('greet', (_args, response) => {
   expectType<boolean>(response.completed)
 })
 
-// provide: return type is UnprovideFn | void
-expectAssignable<(() => void) | void>(ds.rpc.provide('greet', () => {}))
+// provide: return type is UnprovideFn | undefined
+expectAssignable<(() => void) | undefined>(ds.rpc.provide('greet', () => {}))
 
 // provide: disposer supports Symbol.dispose
 const rpcDisposer = ds.rpc.provide('greet', () => ({ message: 'hello' }))
