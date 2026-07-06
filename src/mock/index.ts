@@ -561,15 +561,17 @@ export class MockRecordHandler<
   // The real provider infrastructure flattens providers that emit
   // observables (a common provider shape is an outer record observe mapping
   // each emission to an inner pipeline); mirror it recursively so provided
-  // record data is never an Observable instance.
+  // record data is never an Observable instance. Detection uses
+  // rxjs.isObservable rather than instanceof: consumers may hold observables
+  // from another rxjs copy or build, whose Observable class differs.
   private _flatten(value: unknown): Observable<unknown> {
-    return value instanceof Observable
+    return rxjs.isObservable(value)
       ? value.pipe(rxjs.switchMap((inner) => this._flatten(inner)))
       : rxjs.of(value)
   }
 
   private _toObservable(value: unknown): Observable<unknown> | null {
-    if (value instanceof Observable) {
+    if (rxjs.isObservable(value)) {
       return this._flatten(value)
     }
     if (value != null) {

@@ -61,6 +61,33 @@ describe('MockRecordHandler.provide', () => {
     assert.deepEqual(values, [{ status: 'first' }, { status: 'second' }])
   })
 
+  it('flattens observables from a foreign rxjs copy (no instanceof reliance)', async () => {
+    const { client } = MockDeepstreamClient.create()
+    // Simulates an observable from another rxjs copy or build: satisfies
+    // rxjs.isObservable's duck-typing but is not an instance of this rxjs's
+    // Observable class.
+    class ForeignObservable {
+      constructor(inner) {
+        this.inner = inner
+      }
+      lift() {
+        throw new Error('not used')
+      }
+      subscribe(...args) {
+        return this.inner.subscribe(...args)
+      }
+      pipe(...operators) {
+        return this.inner.pipe(...operators)
+      }
+    }
+    client.record.provide(':stats[?]$', () => new ForeignObservable(rxjs.of({ status: 'foreign' })))
+
+    const value = await rxjs.firstValueFrom(
+      client.record.observe('rec1:stats?').pipe(rxjs.timeout(1000)),
+    )
+    assert.deepEqual(value, { status: 'foreign' })
+  })
+
   it('keeps plain value providers working', async () => {
     const { client } = MockDeepstreamClient.create()
     client.record.provide(':stats[?]$', () => ({ status: 'plain' }))
