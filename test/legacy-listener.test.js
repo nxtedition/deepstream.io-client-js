@@ -445,6 +445,9 @@ describe('LegacyListener', async () => {
       // The retry timeout is 10 seconds, we don't want to actually wait
       // Just verify the provider is still in the map (will be retried)
       assert.equal(listener.stats.subscriptions, 1)
+
+      // Clear the pending 10s retry timer so the process can exit immediately
+      listener._$destroy()
     })
   })
 })

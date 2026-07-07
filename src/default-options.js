@@ -6,4 +6,6 @@ export default {
   batchSize: 4096,
   schedule: null,
   logger: null,
+  createConnection: null,
+  syncSchedule: null,
 }
