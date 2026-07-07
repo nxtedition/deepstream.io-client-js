@@ -31,6 +31,20 @@ export interface DeepstreamClientOptions {
   schedule?: ((fn: (deadline?: IdleDeadline) => void) => void) | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   logger?: any
+  /**
+   * Replaces the WebSocket-backed Connection with a custom transport.
+   * Intended for tests (see mock/connection.ts). The returned object must
+   * implement the internal Connection surface (sendMsg/getState/connected/
+   * authenticate/close plus emitter semantics).
+   */
+  createConnection?:
+    | ((client: unknown, url: string, options: DeepstreamClientOptions) => unknown)
+    | null
+  /**
+   * Scheduler for the record SYNC batching flush (default: setTimeout 1ms).
+   * Tests inject a microtask scheduler to make sync round-trips timer-free.
+   */
+  syncSchedule?: ((fn: () => void) => void) | null
 }
 
 export default function <

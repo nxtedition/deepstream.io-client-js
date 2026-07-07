@@ -12,7 +12,11 @@ function Client(url, options) {
   this._url = url
   this._options = this._getOptions(options || {})
 
-  this._connection = new Connection(this, this._url, this._options)
+  this._connection = (
+    this._options.createConnection
+      ? this._options.createConnection(this, this._url, this._options)
+      : new Connection(this, this._url, this._options)
+  )
     .on('recv', (message) => {
       this.emit('recv', message)
     })

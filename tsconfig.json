@@ -12,6 +12,7 @@
     "noImplicitAny": false,
     "resolveJsonModule": true,
     "useUnknownInCatchVariables": false,
+    "allowImportingTsExtensions": true,
     "noEmit": true
   },
   "include": ["src/**/*"]
